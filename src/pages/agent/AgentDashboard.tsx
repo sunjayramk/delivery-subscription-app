@@ -1,0 +1,353 @@
+import { useEffect, useState } from "react";
+import TopBar from "../../components/common/TopBar";
+import { useAuth } from "../../context/AuthContext";
+import { db } from "../../firebase";
+import { createNotification } from "../../services/Notifications";
+import {
+  collection,
+  query,
+  where,
+  getDocs,
+  doc,
+  updateDoc,
+  serverTimestamp,
+  getDoc,
+  addDoc,
+  setDoc,
+  increment,
+} from "firebase/firestore";
+
+interface OrderItem {
+  name: string;
+  unit: string;
+  price: number;
+  qty: number;
+}
+
+interface DeliveryAddress {
+  label: string;
+  line1: string;
+  area?: string;
+  city?: string;
+  pincode?: string;
+  phone?: string;
+  mapUrl?: string;
+}
+
+interface Order {
+  id: string;
+  status: string;
+  createdAt?: Date;
+  items: OrderItem[];
+  customerId: string;
+  deliveryAddress?: DeliveryAddress;
+  routeName?: string;
+}
+
+function formatAddress(addr: DeliveryAddress | undefined): string {
+  if (!addr) return "No address";
+  const parts = [
+    addr.label,
+    addr.line1,
+    addr.area,
+    addr.city,
+    addr.pincode,
+  ].filter(Boolean);
+  return parts.join(", ");
+}
+
+export default function AgentDashboard() {
+  const { user } = useAuth();
+  const [orders, setOrders] = useState<Order[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
+  const [updatingId, setUpdatingId] = useState<string | null>(null);
+
+  async function loadOrders() {
+    if (!user || !user.tenantId) {
+      setError("No tenant assigned to this delivery agent.");
+      setLoading(false);
+      return;
+    }
+
+    setLoading(true);
+    setError("");
+
+    try {
+      // 1) Load customer → agent assignments for this tenant
+      const assignQ = query(
+        collection(db, "customerAssignments"),
+        where("tenantId", "==", user.tenantId)
+      );
+      const assignSnap = await getDocs(assignQ);
+
+      const assignmentMap: Record<
+        string,
+        { agentId?: string; routeName?: string }
+      > = {};
+      assignSnap.forEach((docSnap) => {
+        const data = docSnap.data() as any;
+        const customerId = data.customerId as string | undefined;
+        if (!customerId) return;
+        assignmentMap[customerId] = {
+          agentId: data.agentId || undefined,
+          routeName: data.routeName || undefined,
+        };
+      });
+
+      // 2) Load all pending orders for this tenant
+      const qOrders = query(
+        collection(db, "orders"),
+        where("tenantId", "==", user.tenantId),
+        where("status", "==", "pending")
+      );
+      const snap = await getDocs(qOrders);
+      const list: Order[] = [];
+
+      snap.forEach((docSnap) => {
+        const data = docSnap.data() as any;
+        const customerId = data.customerId || "";
+        const assignment = assignmentMap[customerId];
+
+        // If this customer is not assigned to this agent, skip
+        if (!assignment || assignment.agentId !== user.uid) {
+          return;
+        }
+
+        list.push({
+          id: docSnap.id,
+          status: data.status || "pending",
+          items: (data.items || []) as OrderItem[],
+          customerId,
+          createdAt: data.createdAt?.toDate
+            ? data.createdAt.toDate()
+            : undefined,
+          deliveryAddress:
+            (data.deliveryAddress as DeliveryAddress | undefined) ??
+            undefined,
+          routeName: assignment.routeName,
+        });
+      });
+
+      // Newest first
+      list.sort((a, b) => {
+  // 1) sort by routeName
+  const ra = (a.routeName || "").toLowerCase();
+  const rb = (b.routeName || "").toLowerCase();
+  if (ra < rb) return -1;
+  if (ra > rb) return 1;
+
+  // 2) then by area / pincode if available
+  const aa = (a.deliveryAddress?.area || a.deliveryAddress?.pincode || "").toLowerCase();
+  const ab = (b.deliveryAddress?.area || b.deliveryAddress?.pincode || "").toLowerCase();
+  if (aa < ab) return -1;
+  if (aa > ab) return 1;
+
+  // 3) finally by createdAt (older first so route list is stable)
+  const ta = a.createdAt?.getTime() ?? 0;
+  const tb = b.createdAt?.getTime() ?? 0;
+  return ta - tb;
+});
+
+
+      setOrders(list);
+    } catch (err) {
+      console.error("Error loading orders for agent", err);
+      setError("Failed to load deliveries.");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  useEffect(() => {
+    void loadOrders();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user]);
+
+  async function updateOrderStatus(
+    orderId: string,
+    status: "delivered" | "not_delivered"
+  ) {
+    if (!user) return;
+    setUpdatingId(orderId);
+    try {
+      const ref = doc(db, "orders", orderId);
+
+      if (status === "delivered") {
+        // Load order details
+        const snap = await getDoc(ref);
+        if (!snap.exists()) {
+          throw new Error("Order not found");
+        }
+        const data = snap.data() as any;
+
+        const items = (data.items as any[]) ?? [];
+        let total = 0;
+        items.forEach((it) => {
+          const price =
+            typeof it.price === "number" && !Number.isNaN(it.price)
+              ? it.price
+              : 0;
+          const qty =
+            typeof it.qty === "number" && !Number.isNaN(it.qty) ? it.qty : 0;
+          total += price * qty;
+        });
+
+        const tenantId = (data.tenantId as string) || user.tenantId;
+        const customerId = data.customerId as string | undefined;
+
+                if (tenantId && customerId && total > 0) {
+          // 1) Add billing transaction (debit)
+          await addDoc(collection(db, "billingTransactions"), {
+            tenantId,
+            customerId,
+            orderId,
+            type: "order_charge",
+            amount: total,
+            note: "Auto debit for delivered order",
+            createdAt: serverTimestamp(),
+          });
+
+          // 2) Update customerAccounts.outstandingDue
+          const accId = `${tenantId}_${customerId}`;
+          const accRef = doc(db, "customerAccounts", accId);
+
+          await setDoc(
+            accRef,
+            {
+              tenantId,
+              customerId,
+              outstandingDue: increment(total),
+              updatedAt: serverTimestamp(),
+              createdAt: serverTimestamp(),
+            },
+            { merge: true }
+          );
+
+          // 3) Create notification for the customer
+          await createNotification({
+            tenantId,
+            userId: customerId,
+            type: "delivery",
+            title: "Order delivered",
+            message: `Your order (${orderId.slice(-6)}) has been delivered.`,
+          });
+        }
+
+
+        // 3) Mark order as delivered
+        await updateDoc(ref, {
+          status,
+          updatedAt: serverTimestamp(),
+        });
+      } else {
+        // Not delivered, only update status
+        await updateDoc(ref, {
+          status,
+          updatedAt: serverTimestamp(),
+        });
+      }
+
+      await loadOrders();
+    } catch (err) {
+      console.error("Error updating order status", err);
+      alert("Failed to update order status.");
+    } finally {
+      setUpdatingId(null);
+    }
+  }
+
+  return (
+    <div>
+      <TopBar title="Delivery Agent App" />
+      <div style={{ padding: 16, maxWidth: 1000, margin: "0 auto" }}>
+        <h1>Today&apos;s Deliveries</h1>
+        <p>Orders assigned to you for this store.</p>
+
+        {error && <p style={{ color: "red" }}>{error}</p>}
+
+        {loading ? (
+          <p>Loading deliveries...</p>
+        ) : orders.length === 0 ? (
+          <p>No pending deliveries assigned to you right now.</p>
+        ) : (
+          <ul style={{ listStyle: "none", padding: 0, marginTop: 16 }}>
+            {orders.map((o) => (
+              <li
+                key={o.id}
+                style={{
+                  border: "1px solid #e0e0e0",
+                  borderRadius: 10,
+                  padding: 12,
+                  marginBottom: 10,
+                }}
+              >
+                <div style={{ marginBottom: 4 }}>
+                  <strong>Order #{o.id.slice(-6)}</strong>{" "}
+                  <span style={{ fontSize: 12, color: "#666", marginLeft: 8 }}>
+                    {o.createdAt ? o.createdAt.toLocaleString() : ""}
+                  </span>
+                </div>
+                {o.routeName && (
+                  <div style={{ fontSize: 13, marginBottom: 4 }}>
+                    <strong>Route:</strong> {o.routeName}
+                  </div>
+                )}
+                <div style={{ fontSize: 14, marginBottom: 4 }}>
+                  <strong>Customer ID:</strong> {o.customerId || "Unknown"}
+                </div>
+                <div style={{ fontSize: 14, marginBottom: 4 }}>
+                  <strong>Items:</strong>{" "}
+                  {o.items.map((it, idx) => (
+                    <span key={idx}>
+                      {it.name} × {it.qty}
+                      {idx < o.items.length - 1 ? ", " : ""}
+                    </span>
+                  ))}
+                </div>
+                <div style={{ fontSize: 14, marginBottom: 4 }}>
+                  <strong>Address:</strong> {formatAddress(o.deliveryAddress)}
+                </div>
+                {o.deliveryAddress?.phone && (
+                  <div style={{ fontSize: 13 }}>
+                    Phone:{" "}
+                    <a href={`tel:${o.deliveryAddress.phone}`}>
+                      {o.deliveryAddress.phone}
+                    </a>
+                  </div>
+                )}
+                {o.deliveryAddress?.mapUrl && (
+                  <div style={{ fontSize: 13, marginTop: 2 }}>
+                    <a
+                      href={o.deliveryAddress.mapUrl}
+                      target="_blank"
+                      rel="noreferrer"
+                    >
+                      Open in Google Maps
+                    </a>
+                  </div>
+                )}
+                <div style={{ marginTop: 8, display: "flex", gap: 8 }}>
+                  <button
+                    disabled={updatingId === o.id}
+                    onClick={() => void updateOrderStatus(o.id, "delivered")}
+                  >
+                    {updatingId === o.id ? "Updating..." : "Mark as Delivered"}
+                  </button>
+                  <button
+                    disabled={updatingId === o.id}
+                    onClick={() =>
+                      void updateOrderStatus(o.id, "not_delivered")
+                    }
+                  >
+                    Mark as Not Delivered
+                  </button>
+                </div>
+              </li>
+            ))}
+          </ul>
+        )}
+      </div>
+    </div>
+  );
+}
