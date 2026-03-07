@@ -13,6 +13,8 @@ import {
   serverTimestamp,
 } from "firebase/firestore";
 
+import Toast from "../../components/common/Toast";
+
 interface TenantRow {
   id: string;
   name: string;
@@ -37,6 +39,12 @@ export default function PlatformDashboard() {
   const [adminEmail, setAdminEmail] = useState("");
   const [saving, setSaving] = useState(false);
   const [formError, setFormError] = useState("");
+  const [toastMessage, setToastMessage] = useState("");
+  const [toastType, setToastType] = useState<"success" | "error" | "info">("success");
+  const showToast = (msg: string, type: "success" | "error" | "info" = "success") => {
+    setToastMessage(msg);
+    setToastType(type);
+  };
 
   // ===== Load tenants + basic stats =====
   async function loadData() {
@@ -59,7 +67,7 @@ export default function PlatformDashboard() {
 
         // Light-weight counts for now (can be optimized later)
         const ordersSnap = await getDocs(
-          query(collection(db, "orders"), where("tenantId", "==", tenantId))
+          query(collection(db, "tenants", tenantId, "orders"))
         );
 
         const customersSnap = await getDocs(
@@ -112,7 +120,7 @@ export default function PlatformDashboard() {
 
     setSaving(true);
     try {
-  const tenantRef = await addDoc(collection(db, "tenants"), {
+  await addDoc(collection(db, "tenants"), {
     name: name.trim(),
     code: code.trim(),
     city: city.trim(),
@@ -120,9 +128,7 @@ export default function PlatformDashboard() {
     isActive: true,
     createdAt: serverTimestamp(),
   });
-
-  const newTenantId = tenantRef.id;
-  console.log("New Tenant ID:", newTenantId);
+  
 
   setName("");
   setCode("");
@@ -147,13 +153,20 @@ export default function PlatformDashboard() {
       );
     } catch (err) {
       console.error("Failed to update tenant status", err);
-      alert("Failed to update tenant status.");
+      showToast("Failed to update tenant status.", "error");
     }
   }
 
   if (loading) {
     return (
       <div>
+        {toastMessage && (
+        <Toast
+          message={toastMessage}
+          type={toastType}
+          onClose={() => setToastMessage("")}
+        />
+      )}
         <TopBar title="Platform Super Admin" />
         <div style={{ padding: 24 }}>Loading tenants...</div>
       </div>
