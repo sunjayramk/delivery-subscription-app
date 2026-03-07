@@ -1,3 +1,5 @@
+// === SubscriptionsTab.tsx === [code here]
+
 interface DeliveryAddress {
   label: string;
   line1: string;

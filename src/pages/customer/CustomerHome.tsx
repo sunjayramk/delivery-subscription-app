@@ -1,4 +1,7 @@
+// === CustomerHome.tsx === [code here] 
+
 import TopBar from "../../components/common/TopBar";
+import Toast from "../../components/common/Toast";
 import { useEffect, useState } from "react";
 import { useAuth } from "../../context/AuthContext";
 import { db } from "../../firebase";
@@ -194,6 +197,13 @@ export default function CustomerHome() {
   const [walletTotalPaid, setWalletTotalPaid] = useState<number>(0);
   const [walletTx, setWalletTx] = useState<WalletTransaction[]>([]);
 
+  const [toastMessage, setToastMessage] = useState("");
+const [toastType, setToastType] = useState<"success" | "error" | "info">("success");
+const showToast = (msg: string, type: "success" | "error" | "info" = "success") => {
+  setToastMessage(msg);
+  setToastType(type);
+};
+
   const [activeTab, setActiveTab] = useState<
   "dashboard" | "wallet" | "addresses" | "products" | "subscriptions" | "orders"
 >("dashboard");
@@ -228,7 +238,7 @@ const tabs = [
         // 1) walletTransactions (if present)
         try {
           const txQ1 = query(
-            collection(db, "walletTransactions"),
+            collection(db, "tenants", user.tenantId, "walletTransactions"),
             ...filters
           );
           const txSnap1 = await getDocs(txQ1);
@@ -256,7 +266,7 @@ const tabs = [
         // 2) billingTransactions (order_charge / payment)
         try {
           const txQ2 = query(
-            collection(db, "billingTransactions"),
+            collection(db, "tenants", user.tenantId, "billingTransactions"),
             ...filters
           );
           const txSnap2 = await getDocs(txQ2);
@@ -336,7 +346,7 @@ const tabs = [
 
       try {
         const qProd = query(
-          collection(db, "products"),
+          collection(db, "tenants", user.tenantId, "products"),
           where("tenantId", "==", user.tenantId),
           where("isActive", "==", true)
         );
@@ -366,14 +376,14 @@ const tabs = [
   // ===== Load recent orders =====
   useEffect(() => {
     async function loadOrders() {
-      if (!user) {
-        setLoadingOrders(false);
-        return;
-      }
+  if (!user || !user.tenantId) {
+    setLoadingOrders(false);
+    return;
+  }
 
       try {
         const qOrders = query(
-          collection(db, "orders"),
+          collection(db, "tenants", user.tenantId, "orders"),
           where("customerId", "==", user.uid)
         );
         const snap = await getDocs(qOrders);
@@ -405,14 +415,14 @@ const tabs = [
   // ===== Load subscriptions =====
   useEffect(() => {
     async function loadSubscriptions() {
-      if (!user) {
-        setLoadingSubs(false);
-        return;
-      }
+  if (!user || !user.tenantId) {
+    setLoadingSubs(false);
+    return;
+  }
 
       try {
         const qSubs = query(
-          collection(db, "subscriptions"),
+          collection(db, "tenants", user.tenantId, "subscriptions"),
           where("customerId", "==", user.uid)
         );
         const snap = await getDocs(qSubs);
@@ -455,10 +465,10 @@ const tabs = [
   }, [user]);
 
   async function reloadSubscriptionsForCustomer() {
-    if (!user) return;
+  if (!user || !user.tenantId) return;
     try {
       const qSubs = query(
-        collection(db, "subscriptions"),
+        collection(db, "tenants", user.tenantId, "subscriptions"),
         where("customerId", "==", user.uid)
       );
       const snap = await getDocs(qSubs);
@@ -497,13 +507,13 @@ const tabs = [
   // ===== Load addresses =====
   useEffect(() => {
     async function loadAddresses() {
-      if (!user) {
-        setLoadingAddresses(false);
-        return;
-      }
+  if (!user || !user.tenantId) {
+    setLoadingAddresses(false);
+    return;
+  }
       try {
         const qAddr = query(
-          collection(db, "addresses"),
+          collection(db, "tenants", user.tenantId, "addresses"),
           where("customerId", "==", user.uid)
         );
         const snap = await getDocs(qAddr);
@@ -535,10 +545,10 @@ const tabs = [
   }, [user]);
 
   async function reloadAddresses() {
-    if (!user) return;
+  if (!user || !user.tenantId) return;
     try {
       const qAddr = query(
-        collection(db, "addresses"),
+        collection(db, "tenants", user.tenantId, "addresses"),
         where("customerId", "==", user.uid)
       );
       const snap = await getDocs(qAddr);
@@ -584,7 +594,7 @@ const tabs = [
     setErrorAddresses("");
 
     try {
-      await addDoc(collection(db, "addresses"), {
+      await addDoc(collection(db, "tenants", user.tenantId!, "addresses"), {
         customerId: user.uid,
         tenantId: user.tenantId ?? null,
         label: newAddrLabel.trim(),
@@ -619,7 +629,7 @@ const tabs = [
   async function handleSetDefaultAddress(addressId: string) {
     if (!user) return;
     try {
-      const ref = doc(db, "addresses", addressId);
+      const ref = doc(db, "tenants", user.tenantId!, "addresses", addressId);
       await updateDoc(ref, {
         isDefault: true,
         updatedAt: serverTimestamp(),
@@ -627,7 +637,7 @@ const tabs = [
       await reloadAddresses();
     } catch (err) {
       console.error("Error setting default address", err);
-      alert("Failed to set default address.");
+      showToast("Failed to set default address.", "error");
     }
   }
 
@@ -654,6 +664,7 @@ const tabs = [
 
 const assignRef = doc(
   db,
+  "tenants", user.tenantId,
   "customerAssignments",
   `${user.tenantId}_${user.uid}`
 );
@@ -664,7 +675,7 @@ if (assignSnap.exists()) {
   const data = assignSnap.data() as any;
   routeName = data.routeName || "";
 }
-      await addDoc(collection(db, "orders"), {
+      await addDoc(collection(db, "tenants", user.tenantId, "orders"), {
   tenantId: user.tenantId,
   customerId: user.uid,
   routeName: routeName,
@@ -684,7 +695,7 @@ if (assignSnap.exists()) {
 });
       // Reload recent orders
       const qOrders = query(
-        collection(db, "orders"),
+        collection(db, "tenants", user.tenantId, "orders"),
         where("customerId", "==", user.uid)
       );
       const snap = await getDocs(qOrders);
@@ -702,7 +713,7 @@ if (assignSnap.exists()) {
         });
       });
       setOrders(list);
-      alert("Order placed!");
+      showToast("Order placed successfully!");
     } catch (err) {
       console.error("Error placing order", err);
       setErrorOrders("Failed to place order.");
@@ -814,7 +825,7 @@ if (assignSnap.exists()) {
         baseData.dayQuantities = dayQuantities;
       }
 
-      await addDoc(collection(db, "subscriptions"), baseData);
+      await addDoc(collection(db, "tenants", user.tenantId, "subscriptions"), baseData);
 
       // Clear form
       setSubProduct(null);
@@ -826,7 +837,7 @@ if (assignSnap.exists()) {
 
       // Reload subscriptions
       await reloadSubscriptionsForCustomer();
-      alert("Subscription created!");
+      showToast("Subscription created successfully!");
     } catch (err) {
       console.error("Error creating subscription", err);
       setSubFormError("Failed to create subscription.");
@@ -838,7 +849,7 @@ if (assignSnap.exists()) {
   async function toggleSubscriptionActive(sub: Subscription) {
     if (!user) return;
     try {
-      const ref = doc(db, "subscriptions", sub.id);
+      const ref = doc(db, "tenants", user.tenantId!, "subscriptions", sub.id);
       await updateDoc(ref, {
         isActive: !sub.isActive,
         updatedAt: serverTimestamp(),
@@ -846,7 +857,7 @@ if (assignSnap.exists()) {
       await reloadSubscriptionsForCustomer();
     } catch (err) {
       console.error("Error updating subscription status", err);
-      alert("Failed to update subscription status.");
+      showToast("Failed to update subscription.", "error");
     }
   }
 
@@ -858,21 +869,21 @@ if (assignSnap.exists()) {
 
     const existing = sub.skipDates ?? [];
     if (existing.includes(dateStr)) {
-      alert("Tomorrow is already skipped for this subscription.");
+      showToast("Tomorrow is already skipped.", "info");
       return;
     }
 
     try {
-      const ref = doc(db, "subscriptions", sub.id);
+      const ref = doc(db, "tenants", user.tenantId!, "subscriptions", sub.id);
       await updateDoc(ref, {
         skipDates: [...existing, dateStr],
         updatedAt: serverTimestamp(),
       });
       await reloadSubscriptionsForCustomer();
-      alert("Tomorrow skipped for this subscription.");
+      showToast("Tomorrow skipped successfully!");
     } catch (err) {
       console.error("Error skipping tomorrow", err);
-      alert("Failed to skip tomorrow.");
+      showToast("Failed to skip tomorrow.", "error");
     }
   }
 
@@ -883,26 +894,26 @@ if (assignSnap.exists()) {
   ) {
     if (!user) return;
     if (!from || !to) {
-      alert("Please select both start and end dates.");
+      showToast("Please select both start and end dates.", "error");
       return;
     }
     if (to < from) {
-      alert("End date must be on or after start date.");
+      showToast("End date must be after start date.", "error");
       return;
     }
 
     try {
-      const ref = doc(db, "subscriptions", sub.id);
+      const ref = doc(db, "tenants", user.tenantId!, "subscriptions", sub.id);
       await updateDoc(ref, {
         vacationFrom: from,
         vacationTo: to,
         updatedAt: serverTimestamp(),
       });
       await reloadSubscriptionsForCustomer();
-      alert("Vacation range saved for this subscription.");
+      showToast("Vacation dates saved!");
     } catch (err) {
       console.error("Error setting vacation range", err);
-      alert("Failed to set vacation range.");
+      showToast("Failed to save vacation dates.", "error");
     }
   }
 
@@ -911,10 +922,18 @@ if (assignSnap.exists()) {
 
   return (
   <AppLayout
+  
     tabs={tabs}
     activeTab={activeTab}
     setActiveTab={setActiveTab}
   >
+    {toastMessage && (
+        <Toast
+          message={toastMessage}
+          type={toastType}
+          onClose={() => setToastMessage("")}
+        />
+      )}
       <TopBar title="Customer App" />
       <div
   style={{

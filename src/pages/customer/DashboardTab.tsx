@@ -1,3 +1,5 @@
+// === DashboardTab.tsx === [code here]
+
 import Card from "../../components/ui/Card";
 import SectionHeader from "../../components/ui/SectionHeader";
 
