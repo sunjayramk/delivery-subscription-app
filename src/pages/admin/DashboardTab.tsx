@@ -1,3 +1,5 @@
+// === DashboardTab.tsx ===[code here]
+
 interface DashboardTabProps {
     cardStyle: React.CSSProperties;
   totalOrdersToday: number;

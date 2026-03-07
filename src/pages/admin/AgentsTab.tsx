@@ -1,3 +1,5 @@
+// === AgentsTab.tsx ===[code here]
+
 interface AgentsTabProps {
   cardStyle: React.CSSProperties;
   agentEmail: string;
@@ -51,8 +53,9 @@ export default function AgentsTab({
         />
 
         <input
-          placeholder="Password"
-          value={agentPassword}
+  type="password"
+  placeholder="Password"
+  value={agentPassword}
           onChange={(e) => setAgentPassword(e.target.value)}
           style={{
             padding: 10,

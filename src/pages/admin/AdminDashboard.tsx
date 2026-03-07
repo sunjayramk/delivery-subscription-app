@@ -1,3 +1,6 @@
+// === AdminDashboard.tsx ===[code here]
+
+
 import { createUserWithEmailAndPassword } from "firebase/auth";
 import { getSecondaryAuth } from "../../firebase";
 import { useEffect, useState } from "react";
@@ -307,8 +310,7 @@ const cred = await createUserWithEmailAndPassword(
     setProductsError("");
     try {
       const qProd = query(
-        collection(db, "products"),
-        where("tenantId", "==", tenantId)
+        collection(db, "tenants", tenantId, "products")
       );
       const snap = await getDocs(qProd);
       const list: Product[] = [];
@@ -337,8 +339,7 @@ const cred = await createUserWithEmailAndPassword(
     setOrdersError("");
     try {
       const qOrders = query(
-        collection(db, "orders"),
-        where("tenantId", "==", tenantId)
+        collection(db, "tenants", tenantId, "orders")
       );
       const snap = await getDocs(qOrders);
       const list: Order[] = [];
@@ -370,8 +371,7 @@ const cred = await createUserWithEmailAndPassword(
     setAccountsError("");
     try {
       const qAcc = query(
-        collection(db, "customerAccounts"),
-        where("tenantId", "==", tenantId)
+        collection(db, "tenants", tenantId, "customerAccounts")
       );
       const snap = await getDocs(qAcc);
       const list: CustomerAccount[] = [];
@@ -438,8 +438,7 @@ const cred = await createUserWithEmailAndPassword(
 
       // Existing assignments
       const assignQ = query(
-        collection(db, "customerAssignments"),
-        where("tenantId", "==", tenantId)
+        collection(db, "tenants", tenantId, "customerAssignments")
       );
       const assignSnap = await getDocs(assignQ);
 
@@ -492,7 +491,7 @@ const cred = await createUserWithEmailAndPassword(
     setSavingProduct(true);
     setProductsError("");
     try {
-      await addDoc(collection(db, "products"), {
+      await addDoc(collection(db, "tenants", tenant.id, "products"), {
         tenantId: tenant.id,
         name: newName.trim(),
         unit: newUnit.trim(),
@@ -582,8 +581,7 @@ function formatCustomerLabel(customerId: string): string {
     try {
       // Active subscriptions
       const subsQ = query(
-        collection(db, "subscriptions"),
-        where("tenantId", "==", tenant.id),
+        collection(db, "tenants", tenant.id, "subscriptions"),
         where("isActive", "==", true)
       );
       const subsSnap = await getDocs(subsQ);
@@ -649,7 +647,7 @@ function formatCustomerLabel(customerId: string): string {
 
         const routeName = assignmentRoute[customerId] || "";
 
-const p = addDoc(collection(db, "orders"), {
+const p = addDoc(collection(db, "tenants", tenant.id, "orders"), {
   tenantId: tenant.id,
   customerId,
   routeName,
@@ -800,7 +798,7 @@ const routePackingList = Object.entries(routePackingMap).map(
     setAccountsError("");
     try {
       // Transaction log
-      await addDoc(collection(db, "billingTransactions"), {
+      await addDoc(collection(db, "tenants", tenant.id, "billingTransactions"), {
         tenantId: tenant.id,
         customerId: paymentCustomerId.trim(),
         type: "payment",
@@ -811,7 +809,7 @@ const routePackingList = Object.entries(routePackingMap).map(
 
       // Update outstanding due
       const accId = `${tenant.id}_${paymentCustomerId.trim()}`;
-      const accRef = doc(db, "customerAccounts", accId);
+      const accRef = doc(db, "tenants", tenant.id, "customerAccounts", accId);
 
       await setDoc(
         accRef,
@@ -882,10 +880,11 @@ async function handleGenerateInvoice(e: React.FormEvent) {
 
     try {
       const ref = doc(
-        db,
-        "customerAssignments",
-        `${tenant.id}_${customerId}`
-      );
+  db,
+  "tenants", tenant.id,
+  "customerAssignments",
+  `${tenant.id}_${customerId}`
+);
       await setDoc(
         ref,
         {

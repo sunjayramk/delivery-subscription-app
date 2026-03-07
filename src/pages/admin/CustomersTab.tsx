@@ -1,3 +1,5 @@
+// === CustomersTab.tsx ===[code here]
+
 interface CustomersTabProps {
   cardStyle: React.CSSProperties;
   custEmail: string;
@@ -55,8 +57,9 @@ export default function CustomersTab({
         />
 
         <input
-          placeholder="Password"
-          value={custPassword}
+  type="password"
+  placeholder="Password"
+  value={custPassword}
           onChange={(e) => setCustPassword(e.target.value)}
           style={{
             padding: 10,

@@ -1,3 +1,5 @@
+// === ProductsTab.tsx ===[code here]
+
 interface Product {
   id: string;
   name: string;

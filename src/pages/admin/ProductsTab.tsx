@@ -1,3 +1,5 @@
+// === ProductsTab.tsx ===[code here]
+
 interface ProductsTabProps {
   cardStyle: React.CSSProperties;
   products: any[];
