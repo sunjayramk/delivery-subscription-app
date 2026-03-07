@@ -5,12 +5,12 @@ import { getFirestore, doc, getDoc } from "firebase/firestore";
 
 // ⬇️ Replace this object with config from Firebase console
 const firebaseConfig = {
-  apiKey: "AIzaSyDUDLUR1NbOM-exNK6e8fxqQMbflFWWVQw",
-  authDomain: "ojvatikadoordrop.firebaseapp.com",
-  projectId: "ojvatikadoordrop",
-  storageBucket: "ojvatikadoordrop.firebasestorage.app",
-  messagingSenderId: "723268935004",
-  appId: "1:723268935004:web:5025475dd40a60a1ed7599",
+  apiKey: import.meta.env.VITE_FIREBASE_API_KEY,
+  authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN,
+  projectId: import.meta.env.VITE_FIREBASE_PROJECT_ID,
+  storageBucket: import.meta.env.VITE_FIREBASE_STORAGE_BUCKET,
+  messagingSenderId: import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID,
+  appId: import.meta.env.VITE_FIREBASE_APP_ID,
 };
 
 const app = initializeApp(firebaseConfig);

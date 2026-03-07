@@ -81,7 +81,7 @@ export default function DeliveryTab({
                     value={assignmentAgent[c.id] ?? ""}
                     onChange={(e) =>
                       setAssignmentAgent((prev) => ({
-                        ...prev,
+                     ...prev,
                         [c.id]: e.target.value,
                       }))
                     }

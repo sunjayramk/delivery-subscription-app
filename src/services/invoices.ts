@@ -7,24 +7,38 @@ import {
   getDocs,
   addDoc,
   serverTimestamp,
+  Timestamp,
 } from "firebase/firestore";
 
 export async function generateInvoiceForCustomerMonth(params: {
   tenantId: string;
   customerId: string;
-  year: number;  // e.g. 2025
-  month: number; // 1-12
+  year: number;
+  month: number;
 }) {
   const { tenantId, customerId, year, month } = params;
 
+  // ✅ Fix 1: Prevent duplicate invoices
+  const existingQ = query(
+    collection(db, "tenants", tenantId, "invoices"),
+    where("customerId", "==", customerId),
+    where("periodYear", "==", year),
+    where("periodMonth", "==", month)
+  );
+  const existing = await getDocs(existingQ);
+  if (!existing.empty) {
+    throw new Error("Invoice already exists for this period");
+  }
+
+  // ✅ Fix 2: Filter transactions by month and year
+  const start = Timestamp.fromDate(new Date(year, month - 1, 1));
+  const end = Timestamp.fromDate(new Date(year, month, 1));
 
   const txQ = query(
-    collection(db, "billingTransactions"),
-    where("tenantId", "==", tenantId),
-    where("customerId", "==", customerId)
-    // NOTE: you can add createdAt range filters once you add composite index:
-    // where("createdAt", ">=", start),
-    // where("createdAt", "<", end)
+    collection(db, "tenants", tenantId, "billingTransactions"),
+    where("customerId", "==", customerId),
+    where("createdAt", ">=", start),
+    where("createdAt", "<", end)
   );
   const snap = await getDocs(txQ);
 
@@ -44,7 +58,8 @@ export async function generateInvoiceForCustomerMonth(params: {
 
   const closingBalance = totalDebits - totalCredits;
 
-  await addDoc(collection(db, "invoices"), {
+  // ✅ Fix 3: Save invoice under tenant subcollection
+  await addDoc(collection(db, "tenants", tenantId, "invoices"), {
     tenantId,
     customerId,
     periodYear: year,

@@ -1,5 +1,5 @@
 interface DashboardTabProps {
-  cardStyle: React.CSSProperties;
+    cardStyle: React.CSSProperties;
   totalOrdersToday: number;
   subscriptionOrders: number;
   oneTimeOrders: number;
@@ -7,6 +7,7 @@ interface DashboardTabProps {
   deliveredCount: number;
   notDeliveredCount: number;
   productSummaryList: any[];
+  routePackingList: any[];
   today: Date;
   handleGenerateOrdersFromSubscriptions: () => void;
 }
@@ -20,6 +21,7 @@ export default function DashboardTab({
   deliveredCount,
   notDeliveredCount,
   productSummaryList,
+  routePackingList,
   today,
   handleGenerateOrdersFromSubscriptions,
 }: DashboardTabProps) {
@@ -71,7 +73,34 @@ export default function DashboardTab({
               value={`${pendingCount} / ${deliveredCount} / ${notDeliveredCount}`}
             />
           </div>
+<h3 style={{ marginTop: 24 }}>🥛 Today's Production Requirement</h3>
 
+<div
+  style={{
+    display: "grid",
+    gridTemplateColumns: "repeat(auto-fit, minmax(160px, 1fr))",
+    gap: 12,
+    marginTop: 12,
+  }}
+>
+  {productSummaryList?.map((p) => (
+    <div
+      key={`prod_${p.productId || p.name}`}
+      style={{
+        padding: 14,
+        borderRadius: 12,
+        border: "1px solid #e5e7eb",
+        background: "#ffffff",
+      }}
+    >
+      <div style={{ fontSize: 14, fontWeight: 600 }}>{p.name}</div>
+
+      <div style={{ fontSize: 22, marginTop: 6 }}>
+        {p.totalQty} {p.unit}
+      </div>
+    </div>
+  ))}
+</div>
           <h3 style={{ marginTop: 24 }}>Product-wise Plan</h3>
 
           {productSummaryList.length === 0 ? (
@@ -88,20 +117,48 @@ export default function DashboardTab({
                   <th align="right">Revenue (₹)</th>
                 </tr>
               </thead>
-              <tbody>
-                {productSummaryList.map((p) => (
-                  <tr key={p.productId || p.name}>
-                    <td>{p.name}</td>
-                    <td>{p.unit}</td>
-                    <td align="right">{p.totalQty}</td>
-                    <td align="right">{p.subscriptionQty}</td>
-                    <td align="right">{p.oneTimeQty}</td>
-                    <td align="right">{p.totalRevenue.toFixed(2)}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          )}
+    <tbody>
+      {productSummaryList.map((p) => (
+        <tr key={p.productId || p.name}>
+          <td>{p.name}</td>
+          <td>{p.unit}</td>
+          <td align="right">{p.totalQty}</td>
+          <td align="right">{p.subscriptionQty}</td>
+          <td align="right">{p.oneTimeQty}</td>
+          <td align="right">{p.totalRevenue.toFixed(2)}</td>
+        </tr>
+      ))}
+    </tbody>
+  </table>
+)}
+
+{/* Packing List by Route */}
+<h3 style={{ marginTop: 24 }}>📦 Packing List by Route</h3>
+{!routePackingList || routePackingList.length === 0 ? (
+  <p>No packing data available.</p>
+) : (
+  routePackingList.map((route: any) => (
+    <div key={route.route} style={{ marginTop: 12 }}>
+      <h4>{route.route}</h4>
+
+      {route.products.map((p: any) => (
+        <div
+          key={p.name}
+          style={{
+            display: "flex",
+            justifyContent: "space-between",
+            padding: "4px 0",
+          }}
+        >
+          <span>{p.name}</span>
+          <span>
+            {p.qty} {p.unit}
+          </span>
+        </div>
+      ))}
+    </div>
+  ))
+)}
         </>
       )}
     </section>

@@ -56,7 +56,8 @@ interface Order {
   createdAt?: Date;
   items: OrderItem[];
   customerId: string;
-  source?: string; // "subscription" | "one_time" | etc.
+  source?: string; 
+  routeName?: string;// "subscription" | "one_time" | etc.
 }
 
 interface CustomerAccount {
@@ -646,16 +647,19 @@ function formatCustomerLabel(customerId: string): string {
 
         const deliveryAddress = data.deliveryAddress || null;
 
-        const p = addDoc(collection(db, "orders"), {
-          tenantId: tenant.id,
-          customerId,
-          status: "pending",
-          createdAt: serverTimestamp(),
-          source: "subscription",
-          subscriptionId: subDoc.id,
-          items: [item],
-          deliveryAddress,
-        });
+        const routeName = assignmentRoute[customerId] || "";
+
+const p = addDoc(collection(db, "orders"), {
+  tenantId: tenant.id,
+  customerId,
+  routeName,
+  status: "pending",
+  createdAt: serverTimestamp(),
+  source: "subscription",
+  subscriptionId: subDoc.id,
+  items: [item],
+  deliveryAddress,
+});
 
         createPromises.push(p);
       });
@@ -691,6 +695,11 @@ function formatCustomerLabel(customerId: string): string {
   let deliveredCount = 0;
   let notDeliveredCount = 0;
 
+  const routePackingMap: Record<
+  string,
+  Record<string, { name: string; unit: string; qty: number }>
+> = {};
+
   const productSummaryMap: Record<
     string,
     {
@@ -715,6 +724,26 @@ function formatCustomerLabel(customerId: string): string {
     else if (status === "not_delivered") notDeliveredCount += 1;
 
     order.items.forEach((it) => {
+      const route =
+  order.routeName ||
+  assignmentRoute[order.customerId] ||
+  "Unassigned";
+
+if (!routePackingMap[route]) {
+  routePackingMap[route] = {};
+}
+
+const routeKey = it.productId || it.name;
+
+if (!routePackingMap[route][routeKey]) {
+  routePackingMap[route][routeKey] = {
+    name: it.name,
+    unit: it.unit,
+    qty: 0,
+  };
+}
+
+routePackingMap[route][routeKey].qty += it.qty;
       const pid = it.productId || it.name;
       const key = pid || it.name;
 
@@ -744,6 +773,12 @@ function formatCustomerLabel(customerId: string): string {
   const productSummaryList = Object.values(productSummaryMap).sort((a, b) =>
     a.name.localeCompare(b.name)
   );
+const routePackingList = Object.entries(routePackingMap).map(
+  ([route, products]) => ({
+    route,
+    products: Object.values(products),
+  })
+);
 
   // ===== RECORD PAYMENT =====
   async function handleRecordPayment(e: React.FormEvent) {
@@ -1024,7 +1059,7 @@ async function handleGenerateInvoice(e: React.FormEvent) {
         {/* DAILY SUMMARY */}
         {activeTab === "dashboard" && (
   <DashboardTab
-    cardStyle={cardStyle}
+        cardStyle={cardStyle}
     totalOrdersToday={totalOrdersToday}
     subscriptionOrders={subscriptionOrders}
     oneTimeOrders={oneTimeOrders}
@@ -1032,6 +1067,7 @@ async function handleGenerateInvoice(e: React.FormEvent) {
     deliveredCount={deliveredCount}
     notDeliveredCount={notDeliveredCount}
     productSummaryList={productSummaryList}
+    routePackingList={routePackingList}
     today={today}
     handleGenerateOrdersFromSubscriptions={
       handleGenerateOrdersFromSubscriptions

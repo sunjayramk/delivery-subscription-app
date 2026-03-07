@@ -2,7 +2,6 @@ import TopBar from "../../components/common/TopBar";
 import { useEffect, useState } from "react";
 import { useAuth } from "../../context/AuthContext";
 import { db } from "../../firebase";
-import { createNotification } from "../../services/Notifications";
 import WalletTab from "./WalletTab";
 import AddressesTab from "./AddressesTab";
 import ProductsTab from "./ProductsTab";
@@ -15,6 +14,7 @@ import {
   query,
   where,
   getDocs,
+  getDoc,
   addDoc,
   serverTimestamp,
   doc,
@@ -650,29 +650,37 @@ const tabs = [
       : undefined;
 
     try {
+      let routeName = "";
+
+const assignRef = doc(
+  db,
+  "customerAssignments",
+  `${user.tenantId}_${user.uid}`
+);
+
+const assignSnap = await getDoc(assignRef);
+
+if (assignSnap.exists()) {
+  const data = assignSnap.data() as any;
+  routeName = data.routeName || "";
+}
       await addDoc(collection(db, "orders"), {
-        tenantId: user.tenantId,
-        customerId: user.uid,
-        status: "pending",
-        createdAt: serverTimestamp(),
-        source: "one_time",
-        items: [
-          {
-            productId: product.id,
-            name: product.name,
-            unit: product.unit,
-            price: product.price,
-            qty: 1,
-          },
-        ],
-        deliveryAddress: deliveryAddress ?? null,
-      });
-await createNotification({
   tenantId: user.tenantId,
-  userId: user.uid,
-  type: "order",
-  title: "Order placed",
-  message: `Your order for ${product.name} has been placed.`,
+  customerId: user.uid,
+  routeName: routeName,
+  status: "pending",
+  createdAt: serverTimestamp(),
+  source: "one_time",
+  items: [
+    {
+      productId: product.id,
+      name: product.name,
+      unit: product.unit,
+      price: product.price,
+      qty: 1,
+    },
+  ],
+  deliveryAddress: deliveryAddress ?? null,
 });
       // Reload recent orders
       const qOrders = query(
