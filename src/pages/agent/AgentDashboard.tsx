@@ -17,6 +17,7 @@ import {
   increment,
 } from "firebase/firestore";
 
+import Toast from "../../components/common/Toast";
 interface OrderItem {
   name: string;
   unit: string;
@@ -80,6 +81,12 @@ export default function AgentDashboard() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [updatingId, setUpdatingId] = useState<string | null>(null);
+const [toastMessage, setToastMessage] = useState("");
+const [toastType, setToastType] = useState<"success" | "error" | "info">("success");
+const showToast = (msg: string, type: "success" | "error" | "info" = "success") => {
+  setToastMessage(msg);
+  setToastType(type);
+};
 
   async function loadOrders() {
     if (!user || !user.tenantId) {
@@ -94,8 +101,7 @@ export default function AgentDashboard() {
     try {
       // 1) Load customer → agent assignments for this tenant
       const assignQ = query(
-        collection(db, "customerAssignments"),
-        where("tenantId", "==", user.tenantId)
+       collection(db, "tenants", user.tenantId, "customerAssignments")
       );
       const assignSnap = await getDocs(assignQ);
 
@@ -113,18 +119,11 @@ export default function AgentDashboard() {
         };
       });
 
-      //Load today's orders for this tenant, then filter client-side for those assigned to this agent
-      const startOfDay = new Date();
-startOfDay.setHours(0,0,0,0);
-
-const endOfDay = new Date();
-endOfDay.setHours(23,59,59,999);
       
       // 2) Load all pending orders for this tenant
       const qOrders = query(
-  collection(db, "orders"),
-  where("tenantId", "==", user.tenantId),
-  where("status", "==", "pending")
+  collection(db, "tenants", user.tenantId, "orders"),
+where("status", "==", "pending")
 );
 
       const snap = await getDocs(qOrders);
@@ -147,13 +146,14 @@ endOfDay.setHours(23,59,59,999);
   }
 
   const customerId = data.customerId || "";
-  const assignment = assignmentMap[customerId];
-        customerIds.add(customerId);
+const assignment = assignmentMap[customerId];
 
         // If this customer is not assigned to this agent, skip
         if (!assignment || assignment.agentId !== user.uid) {
           return;
         }
+
+        customerIds.add(customerId);
 
         list.push({
           id: docSnap.id,
@@ -227,7 +227,7 @@ setCustomerNameMap(nameMap);
     if (!user) return;
     setUpdatingId(orderId);
     try {
-      const ref = doc(db, "orders", orderId);
+      const ref = doc(db, "tenants", user.tenantId!, "orders", orderId);
 
       if (status === "delivered") {
         // Load order details
@@ -254,7 +254,7 @@ setCustomerNameMap(nameMap);
 
                 if (tenantId && customerId && total > 0) {
           // 1) Add billing transaction (debit)
-          await addDoc(collection(db, "billingTransactions"), {
+          await addDoc(collection(db, "tenants", user.tenantId!, "billingTransactions"), {
             tenantId,
             customerId,
             orderId,
@@ -266,7 +266,7 @@ setCustomerNameMap(nameMap);
 
           // 2) Update customerAccounts.outstandingDue
           const accId = `${tenantId}_${customerId}`;
-          const accRef = doc(db, "customerAccounts", accId);
+          const accRef = doc(db, "tenants", user.tenantId!, "customerAccounts", accId);
 
           await setDoc(
             accRef,
@@ -307,7 +307,7 @@ setCustomerNameMap(nameMap);
       await loadOrders();
     } catch (err) {
       console.error("Error updating order status", err);
-      alert("Failed to update order status.");
+      showToast("Failed to update order status.", "error");
     } finally {
       setUpdatingId(null);
     }
@@ -316,7 +316,7 @@ function navigateRoute(routeOrders: Order[]) {
   const firstOrder = routeOrders[0];
 
   if (!firstOrder?.deliveryAddress?.mapUrl) {
-    alert("No map location available for this route.");
+    showToast("No map location available for this route.", "info");
     return;
   }
 
@@ -325,6 +325,13 @@ function navigateRoute(routeOrders: Order[]) {
 
   return (
     <div>
+      {toastMessage && (
+        <Toast
+          message={toastMessage}
+          type={toastType}
+          onClose={() => setToastMessage("")}
+        />
+      )}
       <TopBar title="Delivery Agent App" />
       <div style={{ padding: 16, maxWidth: 1000, margin: "0 auto" }}>
         <h1>Today's Deliveries</h1>
