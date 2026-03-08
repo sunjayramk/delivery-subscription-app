@@ -140,7 +140,7 @@ const [agentError, setAgentError] = useState("");
 
   // Invoice generation state
   const [invCustomerId, setInvCustomerId] = useState("");
-  const [invYear, setInvYear] = useState("2025");
+  const [invYear, setInvYear] = useState("2026");
   const [invMonth, setInvMonth] = useState("1");
   const [invSaving, setInvSaving] = useState(false);
   const [invError, setInvError] = useState("");
@@ -426,16 +426,22 @@ console.log("Users found:", usersSnap.size, "for tenantId:", tenantId);
   };
 
   if (role === "customer") {
-    customers.push({
-      ...entry,
-      name: data.name || "",
-      phone: data.phone || "",
-    });
-    profileMap[id] = {
-      name: data.name || "",
-      phone: data.phone || "",
-    };
-  }
+        customers.push({
+          ...entry,
+          name: data.name || "",
+          phone: data.phone || "",
+        });
+        profileMap[id] = {
+          name: data.name || "",
+          phone: data.phone || "",
+        };
+      } else if (role === "agent") {
+        agents.push({
+          ...entry,
+          name: data.name || "",
+          phone: data.phone || "",
+        });
+      }
 });
 
 
@@ -1102,6 +1108,7 @@ async function handleGenerateInvoice(e: React.FormEvent) {
     invMonth={invMonth}
     invSaving={invSaving}
     invError={invError}
+    customers={tenantCustomers}
     setPaymentCustomerId={setPaymentCustomerId}
     setPaymentAmount={setPaymentAmount}
     setPaymentNote={setPaymentNote}
