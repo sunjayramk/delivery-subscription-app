@@ -165,6 +165,7 @@ export default function CustomerHome() {
     Record<number, string>
   >({});
   const [subAddressId, setSubAddressId] = useState<string>("");
+  const [subStartDate, setSubStartDate] = useState<string>("");
   const [savingSub, setSavingSub] = useState(false);
   const [subFormError, setSubFormError] = useState("");
 
@@ -729,7 +730,12 @@ if (assignSnap.exists()) {
     setSubCustomDays([]);
     setSubDayQuantities({});
     setSubAddressId("");
+    setSubStartDate("");
     setSubFormError("");
+    // scroll to form
+    setTimeout(() => {
+      document.getElementById("sub-form")?.scrollIntoView({ behavior: "smooth" });
+    }, 100);
   }
 
   function toggleCustomDay(dayIndex: number) {
@@ -802,6 +808,10 @@ if (assignSnap.exists()) {
     setSavingSub(true);
     setSubFormError("");
     try {
+      const startDateValue = subStartDate
+        ? new Date(subStartDate)
+        : new Date();
+
       const baseData: any = {
         tenantId: user.tenantId,
         customerId: user.uid,
@@ -813,7 +823,7 @@ if (assignSnap.exists()) {
         scheduleType: subSchedule,
         isActive: true,
         createdAt: serverTimestamp(),
-        startDate: serverTimestamp(),
+        startDate: startDateValue,
         deliveryAddress,
       };
 
@@ -834,6 +844,7 @@ if (assignSnap.exists()) {
       setSubCustomDays([]);
       setSubDayQuantities({});
       setSubAddressId("");
+      setSubStartDate("");
 
       // Reload subscriptions
       await reloadSubscriptionsForCustomer();
@@ -1011,44 +1022,58 @@ if (assignSnap.exists()) {
        
         {/* Subscription form */}
         
-        {subProduct && (
+        {subProduct && activeTab === "products" && (
           <section
+            id="sub-form"
             style={{
               marginTop: 24,
-              padding: 16,
-              borderRadius: 10,
+              padding: 20,
+              borderRadius: 12,
               border: "1px solid #e0e0e0",
+              background: "#fff",
             }}
           >
-            <h2>Create Subscription</h2>
-            <p>
-              Product: <strong>{subProduct.name}</strong> ({subProduct.unit}) –
-              ₹{subProduct.price}
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+              <h2 style={{ margin: 0 }}>Create Subscription</h2>
+              <button
+                onClick={() => setSubProduct(null)}
+                style={{ background: "none", border: "none", fontSize: 20, cursor: "pointer", color: "#666" }}
+              >
+                ✕
+              </button>
+            </div>
+
+            <p style={{ marginTop: 8 }}>
+              Product: <strong>{subProduct.name}</strong> ({subProduct.unit}) – ₹{subProduct.price}
             </p>
+
             <form
               onSubmit={handleCreateSubscription}
-              style={{
-                display: "grid",
-                gridTemplateColumns: "1fr 1fr",
-                gap: 12,
-                alignItems: "start",
-                marginTop: 12,
-              }}
+              style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, alignItems: "start", marginTop: 12 }}
             >
+              {/* Start Date */}
               <div>
-                <label>Base quantity per day</label>
+                <label style={{ fontSize: 13, display: "block", marginBottom: 4 }}>Start Date</label>
                 <input
+                  type="date"
                   style={{ width: "100%", padding: 8 }}
-                  value={subQty}
-                  onChange={(e) => setSubQty(e.target.value)}
+                  value={subStartDate}
+                  min={new Date().toISOString().slice(0, 10)}
+                  onChange={(e) => setSubStartDate(e.target.value)}
                 />
               </div>
+
+              {/* Schedule */}
               <div>
-                <label>Schedule</label>
+                <label style={{ fontSize: 13, display: "block", marginBottom: 4 }}>Schedule</label>
                 <select
                   style={{ width: "100%", padding: 8 }}
                   value={subSchedule}
-                  onChange={(e) => setSubSchedule(e.target.value)}
+                  onChange={(e) => {
+                    setSubSchedule(e.target.value);
+                    setSubDayQuantities({});
+                    setSubCustomDays([]);
+                  }}
                 >
                   <option value="daily">Daily</option>
                   <option value="alternate_days">Alternate days</option>
@@ -1058,50 +1083,107 @@ if (assignSnap.exists()) {
                 </select>
               </div>
 
+              {/* Base Qty — only for daily and alternate_days */}
+              {(subSchedule === "daily" || subSchedule === "alternate_days") && (
+                <div>
+                  <label style={{ fontSize: 13, display: "block", marginBottom: 4 }}>Quantity per day</label>
+                  <input
+                    style={{ width: "100%", padding: 8 }}
+                    value={subQty}
+                    onChange={(e) => setSubQty(e.target.value)}
+                  />
+                </div>
+              )}
+
+              {/* Custom days selector */}
               {subSchedule === "custom" && (
                 <div style={{ gridColumn: "1 / span 2", marginTop: 8 }}>
-                  <label>Select days:</label>
-                  <div
-                    style={{
-                      display: "flex",
-                      flexWrap: "wrap",
-                      gap: 8,
-                      marginTop: 4,
-                    }}
-                  >
+                  <label style={{ fontSize: 13, display: "block", marginBottom: 4 }}>Select days & quantity:</label>
+                  <div style={{ display: "flex", flexWrap: "wrap", gap: 12, marginTop: 4 }}>
                     {DAY_LABELS.map((label, index) => (
-                      <label
-                        key={index}
-                        style={{
-                          border: "1px solid #ccc",
-                          borderRadius: 16,
-                          padding: "4px 10px",
-                          cursor: "pointer",
-                          backgroundColor: subCustomDays.includes(index)
-                            ? "#eee"
-                            : "#fff",
-                          fontSize: 13,
-                        }}
-                      >
-                        <input
-                          type="checkbox"
-                          checked={subCustomDays.includes(index)}
-                          onChange={() => toggleCustomDay(index)}
-                          style={{ marginRight: 4 }}
-                        />
-                        {label}
-                      </label>
+                      <div key={index} style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 4 }}>
+                        <label
+                          style={{
+                            border: "1px solid #ccc",
+                            borderRadius: 16,
+                            padding: "4px 10px",
+                            cursor: "pointer",
+                            backgroundColor: subCustomDays.includes(index) ? "#111827" : "#fff",
+                            color: subCustomDays.includes(index) ? "#fff" : "#111",
+                            fontSize: 13,
+                            userSelect: "none",
+                          }}
+                        >
+                          <input
+                            type="checkbox"
+                            checked={subCustomDays.includes(index)}
+                            onChange={() => toggleCustomDay(index)}
+                            style={{ display: "none" }}
+                          />
+                          {label}
+                        </label>
+                        {subCustomDays.includes(index) && (
+                          <input
+                            style={{ width: 60, padding: 4, fontSize: 12, textAlign: "center" }}
+                            placeholder="Qty"
+                            value={subDayQuantities[index] ?? ""}
+                            onChange={(e) => setDayQuantityInput(index, e.target.value)}
+                          />
+                        )}
+                      </div>
                     ))}
                   </div>
                 </div>
               )}
 
-              {/* Address selection for subscription */}
+              {/* Mon-Fri qty per day */}
+              {subSchedule === "mon_fri" && (
+                <div style={{ gridColumn: "1 / span 2", marginTop: 8 }}>
+                  <label style={{ fontSize: 13, display: "block", marginBottom: 4 }}>Quantity per day (Mon–Fri):</label>
+                  <div style={{ display: "flex", flexWrap: "wrap", gap: 12, marginTop: 4 }}>
+                    {[1, 2, 3, 4, 5].map((index) => (
+                      <div key={index} style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 4 }}>
+                        <div style={{ fontSize: 13, fontWeight: 500 }}>{DAY_LABELS[index]}</div>
+                        <input
+                          style={{ width: 60, padding: 4, fontSize: 12, textAlign: "center" }}
+                          placeholder={subQty || "1"}
+                          value={subDayQuantities[index] ?? ""}
+                          onChange={(e) => setDayQuantityInput(index, e.target.value)}
+                        />
+                      </div>
+                    ))}
+                  </div>
+                  <div style={{ fontSize: 12, marginTop: 4, color: "#555" }}>Leave blank to use base quantity</div>
+                </div>
+              )}
+
+              {/* Weekends qty per day */}
+              {subSchedule === "weekends" && (
+                <div style={{ gridColumn: "1 / span 2", marginTop: 8 }}>
+                  <label style={{ fontSize: 13, display: "block", marginBottom: 4 }}>Quantity per day (Weekends):</label>
+                  <div style={{ display: "flex", flexWrap: "wrap", gap: 12, marginTop: 4 }}>
+                    {[0, 6].map((index) => (
+                      <div key={index} style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 4 }}>
+                        <div style={{ fontSize: 13, fontWeight: 500 }}>{DAY_LABELS[index]}</div>
+                        <input
+                          style={{ width: 60, padding: 4, fontSize: 12, textAlign: "center" }}
+                          placeholder={subQty || "1"}
+                          value={subDayQuantities[index] ?? ""}
+                          onChange={(e) => setDayQuantityInput(index, e.target.value)}
+                        />
+                      </div>
+                    ))}
+                  </div>
+                  <div style={{ fontSize: 12, marginTop: 4, color: "#555" }}>Leave blank to use base quantity</div>
+                </div>
+              )}
+
+              {/* Delivery Address */}
               <div style={{ gridColumn: "1 / span 2", marginTop: 8 }}>
-                <label>Delivery address</label>
+                <label style={{ fontSize: 13, display: "block", marginBottom: 4 }}>Delivery address</label>
                 {addresses.length === 0 ? (
-                  <p style={{ fontSize: 13 }}>
-                    Please add an address above before creating a subscription.
+                  <p style={{ fontSize: 13, color: "#e11d48" }}>
+                    Please add an address in the Addresses tab before creating a subscription.
                   </p>
                 ) : (
                   <select
@@ -1109,56 +1191,53 @@ if (assignSnap.exists()) {
                     value={subAddressId}
                     onChange={(e) => setSubAddressId(e.target.value)}
                   >
-                    <option value="">Select address</option>
+                    <option value="">— Select address —</option>
                     {addresses.map((a) => (
                       <option key={a.id} value={a.id}>
-                        {a.label} – {a.line1}
-                        {a.area ? `, ${a.area}` : ""}
+                        {a.label} – {a.line1}{a.area ? `, ${a.area}` : ""}
                       </option>
                     ))}
                   </select>
                 )}
               </div>
 
-              {/* Optional per-weekday quantity overrides */}
-              <div style={{ gridColumn: "1 / span 2", marginTop: 8 }}>
-                <label>Optional: quantity override by weekday</label>
-                <div
+              {subFormError && (
+                <div style={{ gridColumn: "1 / span 2", color: "red", fontSize: 13 }}>
+                  {subFormError}
+                </div>
+              )}
+
+              <div style={{ gridColumn: "1 / span 2", marginTop: 8, display: "flex", gap: 8 }}>
+                <button
+                  type="submit"
+                  disabled={savingSub}
                   style={{
-                    display: "flex",
-                    flexWrap: "wrap",
-                    gap: 8,
-                    marginTop: 4,
+                    padding: "10px 24px",
+                    borderRadius: 8,
+                    border: "none",
+                    background: "#111827",
+                    color: "#fff",
+                    cursor: "pointer",
+                    fontWeight: 500,
                   }}
                 >
-                  {DAY_LABELS.map((label, index) => (
-                    <div key={index} style={{ minWidth: 80 }}>
-                      <div style={{ fontSize: 12 }}>{label}</div>
-                      <input
-                        style={{ width: "100%", padding: 4, fontSize: 12 }}
-                        placeholder="-"
-                        value={subDayQuantities[index] ?? ""}
-                        onChange={(e) =>
-                          setDayQuantityInput(index, e.target.value)
-                        }
-                      />
-                    </div>
-                  ))}
-                </div>
-                <div style={{ fontSize: 12, marginTop: 4, color: "#555" }}>
-                  If left blank, base quantity will be used for that weekday.
-                </div>
-              </div>
-
-              <div style={{ gridColumn: "1 / span 2", marginTop: 8 }}>
-                <button type="submit" disabled={savingSub}>
                   {savingSub ? "Saving..." : "Start Subscription"}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setSubProduct(null)}
+                  style={{
+                    padding: "10px 24px",
+                    borderRadius: 8,
+                    border: "1px solid #d1d5db",
+                    background: "#fff",
+                    cursor: "pointer",
+                  }}
+                >
+                  Cancel
                 </button>
               </div>
             </form>
-            {subFormError && (
-              <p style={{ color: "red", marginTop: 8 }}>{subFormError}</p>
-            )}
           </section>
         )}
 
