@@ -29,7 +29,8 @@ export interface AppUser {
   uid: string;
   email?: string | null;
   role: AppUserRole;
-  tenantId?: string | null; // null for platform_super_admin
+  tenantId?: string | null;
+  name?: string | null;
 }
 
 // Load user profile from Firestore /users/{uid}
@@ -46,6 +47,7 @@ export async function loadUserProfile(
     email: firebaseUser.email,
     role: data.role as AppUserRole,
     tenantId: data.tenantId || null,
+    name: data.name || null,
   };
 }
 

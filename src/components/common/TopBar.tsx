@@ -31,7 +31,7 @@ export default function TopBar({ title }: TopBarProps) {
     color: "#111827",
   }}
 >
-          {title || "Daily Subscription Platform"}
+          {user?.name || user?.email || title || "Daily Subscription Platform"}
         </div>
         {user && (
           <div
@@ -41,7 +41,7 @@ export default function TopBar({ title }: TopBarProps) {
     marginTop: 4,
   }}
 >
-            {user.email} · {user.role}
+            {user.role}
           </div>
         )}
       </div>

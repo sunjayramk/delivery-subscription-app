@@ -31,8 +31,7 @@ export default function NotificationBell() {
     if (!user || !user.tenantId) return;
 
     const q = query(
-      collection(db, "notifications"),
-      where("tenantId", "==", user.tenantId),
+      collection(db, "tenants", user.tenantId, "notifications"),
       where("userId", "==", user.uid),
       orderBy("createdAt", "desc"),
       limit(15)
@@ -67,7 +66,10 @@ export default function NotificationBell() {
     if (!user || !user.tenantId) return;
     const unread = notifications.filter((n) => !n.read);
     await Promise.all(
-      unread.map((n) => updateDoc(doc(db, "notifications", n.id), { read: true }))
+      unread.map((n) => updateDoc(
+        doc(db, "tenants", user.tenantId!, "notifications", n.id),
+        { read: true }
+      ))
     );
   }
 

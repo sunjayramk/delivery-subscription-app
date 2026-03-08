@@ -73,6 +73,8 @@ interface TenantUser {
   id: string;
   email: string;
   role: string;
+  name?: string;
+  phone?: string;
 }
 
 export default function AdminDashboard() {
@@ -126,6 +128,7 @@ const [customerError, setCustomerError] = useState("");
 const [agentEmail, setAgentEmail] = useState("");
 const [agentPassword, setAgentPassword] = useState("");
 const [agentName, setAgentName] = useState("");
+const [agentPhone, setAgentPhone] = useState("");
 const [savingAgent, setSavingAgent] = useState(false);
 const [agentError, setAgentError] = useState("");
 
@@ -251,12 +254,14 @@ const cred = await createUserWithEmailAndPassword(
       role: "agent",
       tenantId: tenant.id,
       name: agentName,
+      phone: agentPhone,
       createdAt: serverTimestamp(),
     });
 
     setAgentEmail("");
     setAgentPassword("");
     setAgentName("");
+    setAgentPhone("");
 
     await loadUsersAndAssignments(tenant.id);
 
@@ -403,7 +408,7 @@ const cred = await createUserWithEmailAndPassword(
         where("tenantId", "==", tenantId)
       );
       const usersSnap = await getDocs(usersQ);
-
+console.log("Users found:", usersSnap.size, "for tenantId:", tenantId);
       const customers: TenantUser[] = [];
       const agents: TenantUser[] = [];
 
@@ -421,13 +426,15 @@ const cred = await createUserWithEmailAndPassword(
   };
 
   if (role === "customer") {
-    customers.push(entry);
+    customers.push({
+      ...entry,
+      name: data.name || "",
+      phone: data.phone || "",
+    });
     profileMap[id] = {
       name: data.name || "",
       phone: data.phone || "",
     };
-  } else if (role === "agent") {
-    agents.push(entry);
   }
 });
 
@@ -1013,6 +1020,7 @@ async function handleGenerateInvoice(e: React.FormEvent) {
     custPhone={custPhone}
     savingCustomer={savingCustomer}
     customerError={customerError}
+    customers={tenantCustomers}
     setCustEmail={setCustEmail}
     setCustPassword={setCustPassword}
     setCustName={setCustName}
@@ -1027,11 +1035,14 @@ async function handleGenerateInvoice(e: React.FormEvent) {
     agentEmail={agentEmail}
     agentPassword={agentPassword}
     agentName={agentName}
+    agentPhone={agentPhone}
     savingAgent={savingAgent}
     agentError={agentError}
+    agents={tenantAgents}
     setAgentEmail={setAgentEmail}
     setAgentPassword={setAgentPassword}
     setAgentName={setAgentName}
+    setAgentPhone={setAgentPhone}
     handleCreateAgent={handleCreateAgent}
   />
 )}
