@@ -1,3 +1,5 @@
+// This page is for platform_super_admin to manage tenants (stores) and see global analytics.
+
 import { useEffect, useState } from "react";
 import TopBar from "../../components/common/TopBar";
 import { useAuth } from "../../context/AuthContext";
@@ -11,6 +13,7 @@ import {
   updateDoc,
   addDoc,
   serverTimestamp,
+  getCountFromServer
 } from "firebase/firestore";
 
 import Toast from "../../components/common/Toast";
@@ -47,6 +50,7 @@ export default function PlatformDashboard() {
   };
 
   // ===== Load tenants + basic stats =====
+  // ===== Load tenants + basic stats =====
   async function loadData() {
     // Only platform_super_admin can see this
     if (!user || user.role !== "platform_super_admin") {
@@ -65,18 +69,16 @@ export default function PlatformDashboard() {
         const data = tDoc.data() as any;
         const tenantId = tDoc.id;
 
-        // Light-weight counts for now (can be optimized later)
-        const ordersSnap = await getDocs(
-          query(collection(db, "tenants", tenantId, "orders"))
-        );
+        // ✅ NEW LOGIC: Fast, cheap server-side counting
+        const ordersQuery = query(collection(db, "tenants", tenantId, "orders"));
+        const ordersCountSnap = await getCountFromServer(ordersQuery);
 
-        const customersSnap = await getDocs(
-          query(
-            collection(db, "users"),
-            where("tenantId", "==", tenantId),
-            where("role", "==", "customer")
-          )
+        const customersQuery = query(
+          collection(db, "users"),
+          where("tenantId", "==", tenantId),
+          where("role", "==", "customer")
         );
+        const customersCountSnap = await getCountFromServer(customersQuery);
 
         tempRows.push({
           id: tenantId,
@@ -84,8 +86,8 @@ export default function PlatformDashboard() {
           code: data.code || "",
           city: data.city || "",
           isActive: data.isActive ?? true,
-          totalOrders: ordersSnap.size,
-          totalCustomers: customersSnap.size,
+          totalOrders: ordersCountSnap.data().count,       // Pulls the count integer
+          totalCustomers: customersCountSnap.data().count, // Pulls the count integer
         });
       }
 

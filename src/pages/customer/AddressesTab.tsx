@@ -1,5 +1,7 @@
 // === AddressesTab.tsx === [code here]
 
+import { useState } from "react";
+
 interface Address {
   id: string;
   label: string;
@@ -41,11 +43,28 @@ interface Props {
   savingAddress: boolean;
 }
 
+const LABEL_OPTIONS = ["Home", "Work", "Other"];
+
+const inputStyle: React.CSSProperties = {
+  width: "100%",
+  padding: "10px 12px",
+  borderRadius: 8,
+  border: "1px solid #d1d5db",
+  fontSize: 14,
+  boxSizing: "border-box",
+};
+
+const labelStyle: React.CSSProperties = {
+  fontSize: 12,
+  color: "#555",
+  marginBottom: 4,
+  display: "block",
+};
+
 export default function AddressesTab({
   loadingAddresses,
   errorAddresses,
   addresses,
-
   newAddrLabel,
   newAddrLine1,
   newAddrArea,
@@ -54,7 +73,6 @@ export default function AddressesTab({
   newAddrPhone,
   newAddrMapUrl,
   newAddrIsDefault,
-
   setNewAddrLabel,
   setNewAddrLine1,
   setNewAddrArea,
@@ -63,15 +81,39 @@ export default function AddressesTab({
   setNewAddrPhone,
   setNewAddrMapUrl,
   setNewAddrIsDefault,
-
   handleAddAddress,
   handleSetDefaultAddress,
-
   savingAddress,
 }: Props) {
+  const [showForm, setShowForm] = useState(false);
+
+  function handleSubmit(e: React.FormEvent) {
+    handleAddAddress(e);
+    setShowForm(false);
+  }
+
   return (
     <section style={{ marginTop: 24 }}>
-      <h2>My Addresses</h2>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
+        <h2 style={{ margin: 0 }}>My Addresses</h2>
+        {!showForm && (
+          <button
+            onClick={() => setShowForm(true)}
+            style={{
+              padding: "8px 16px",
+              borderRadius: 8,
+              border: "none",
+              background: "#111827",
+              color: "#fff",
+              cursor: "pointer",
+              fontWeight: 500,
+              fontSize: 14,
+            }}
+          >
+            + Add Address
+          </button>
+        )}
+      </div>
 
       {loadingAddresses ? (
         <p>Loading addresses...</p>
@@ -79,150 +121,252 @@ export default function AddressesTab({
         <p style={{ color: "red" }}>{errorAddresses}</p>
       ) : (
         <>
-          {/* Address Form */}
-          <form
-            onSubmit={handleAddAddress}
-            style={{
-              display: "grid",
-              gridTemplateColumns: "1fr 2fr",
-              gap: 8,
-              alignItems: "start",
-              marginBottom: 16,
-            }}
-          >
-            <div>
-              <label>Label</label>
-              <input
-                style={{ width: "100%", padding: 6 }}
-                value={newAddrLabel}
-                onChange={(e) => setNewAddrLabel(e.target.value)}
-              />
-            </div>
+          {/* Add Address Form */}
+          {showForm && (
+            <div
+              style={{
+                padding: 20,
+                borderRadius: 12,
+                border: "1px solid #e5e7eb",
+                background: "#fff",
+                marginBottom: 20,
+              }}
+            >
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
+                <h3 style={{ margin: 0 }}>New Address</h3>
+                <button
+                  onClick={() => setShowForm(false)}
+                  style={{ background: "none", border: "none", fontSize: 20, cursor: "pointer", color: "#666" }}
+                >
+                  ✕
+                </button>
+              </div>
 
-            <div>
-              <label>Address</label>
-              <input
-                style={{ width: "100%", padding: 6 }}
-                value={newAddrLine1}
-                onChange={(e) => setNewAddrLine1(e.target.value)}
-              />
-            </div>
+              <form onSubmit={handleSubmit}>
+                {/* Label buttons */}
+                <div style={{ marginBottom: 16 }}>
+                  <label style={labelStyle}>Label</label>
+                  <div style={{ display: "flex", gap: 8 }}>
+                    {LABEL_OPTIONS.map((opt) => (
+                      <button
+                        key={opt}
+                        type="button"
+                        onClick={() => setNewAddrLabel(opt)}
+                        style={{
+                          padding: "6px 16px",
+                          borderRadius: 20,
+                          border: "1px solid #d1d5db",
+                          background: newAddrLabel === opt ? "#111827" : "#fff",
+                          color: newAddrLabel === opt ? "#fff" : "#374151",
+                          cursor: "pointer",
+                          fontSize: 13,
+                          fontWeight: 500,
+                        }}
+                      >
+                        {opt === "Home" ? "🏠 Home" : opt === "Work" ? "💼 Work" : "📍 Other"}
+                      </button>
+                    ))}
+                  </div>
+                </div>
 
-            <div>
-              <label>Area</label>
-              <input
-                style={{ width: "100%", padding: 6 }}
-                value={newAddrArea}
-                onChange={(e) => setNewAddrArea(e.target.value)}
-              />
-            </div>
+                {/* House/Flat */}
+                <div style={{ marginBottom: 12 }}>
+                  <label style={labelStyle}>House / Flat / Block Number</label>
+                  <input
+                    style={inputStyle}
+                    placeholder="e.g. Flat 4B, Tower 2"
+                    value={newAddrLine1}
+                    onChange={(e) => setNewAddrLine1(e.target.value)}
+                  />
+                </div>
 
-            <div>
-              <label>City</label>
-              <input
-                style={{ width: "100%", padding: 6 }}
-                value={newAddrCity}
-                onChange={(e) => setNewAddrCity(e.target.value)}
-              />
-            </div>
+                {/* Building/Society */}
+                <div style={{ marginBottom: 12 }}>
+                  <label style={labelStyle}>Apartment / Building / Society</label>
+                  <input
+                    style={inputStyle}
+                    placeholder="e.g. Sunrise Apartments"
+                    value={newAddrArea}
+                    onChange={(e) => setNewAddrArea(e.target.value)}
+                  />
+                </div>
 
-            <div>
-              <label>Pincode</label>
-              <input
-                style={{ width: "100%", padding: 6 }}
-                value={newAddrPincode}
-                onChange={(e) => setNewAddrPincode(e.target.value)}
-              />
-            </div>
+                {/* City and Pincode in a row */}
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, marginBottom: 12 }}>
+                  <div>
+                    <label style={labelStyle}>City</label>
+                    <input
+                      style={inputStyle}
+                      placeholder="e.g. Mumbai"
+                      value={newAddrCity}
+                      onChange={(e) => setNewAddrCity(e.target.value)}
+                    />
+                  </div>
+                  <div>
+                    <label style={labelStyle}>Pincode</label>
+                    <input
+                      style={inputStyle}
+                      placeholder="e.g. 400053"
+                      value={newAddrPincode}
+                      onChange={(e) => setNewAddrPincode(e.target.value)}
+                    />
+                  </div>
+                </div>
 
-            <div>
-              <label>Phone</label>
-              <input
-                style={{ width: "100%", padding: 6 }}
-                value={newAddrPhone}
-                onChange={(e) => setNewAddrPhone(e.target.value)}
-              />
-            </div>
+                {/* Phone */}
+                <div style={{ marginBottom: 12 }}>
+                  <label style={labelStyle}>Phone Number</label>
+                  <input
+                    style={inputStyle}
+                    placeholder="e.g. 9876543210"
+                    value={newAddrPhone}
+                    onChange={(e) => setNewAddrPhone(e.target.value)}
+                  />
+                </div>
 
-            <div>
-              <label>Google Maps URL</label>
-              <input
-                style={{ width: "100%", padding: 6 }}
-                value={newAddrMapUrl}
-                onChange={(e) => setNewAddrMapUrl(e.target.value)}
-              />
-            </div>
+                {/* Instructions */}
+                <div style={{ marginBottom: 12 }}>
+                  <label style={labelStyle}>Delivery Instructions (optional)</label>
+                  <input
+                    style={inputStyle}
+                    placeholder="e.g. Leave at door, Ring bell twice"
+                    value={newAddrMapUrl}
+                    onChange={(e) => setNewAddrMapUrl(e.target.value)}
+                  />
+                </div>
 
-            <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-              <label>
-                <input
-                  type="checkbox"
-                  checked={newAddrIsDefault}
-                  onChange={(e) => setNewAddrIsDefault(e.target.checked)}
-                />
-                Set as default
-              </label>
-            </div>
+                {/* Default checkbox */}
+                <div style={{ marginBottom: 16 }}>
+                  <label style={{ display: "flex", alignItems: "center", gap: 8, cursor: "pointer", fontSize: 14 }}>
+                    <input
+                      type="checkbox"
+                      checked={newAddrIsDefault}
+                      onChange={(e) => setNewAddrIsDefault(e.target.checked)}
+                    />
+                    Set as default address
+                  </label>
+                </div>
 
-            <div style={{ gridColumn: "1 / span 2" }}>
-              <button type="submit" disabled={savingAddress}>
-                {savingAddress ? "Saving..." : "Add Address"}
-              </button>
+                <div style={{ display: "flex", gap: 8 }}>
+                  <button
+                    type="submit"
+                    disabled={savingAddress}
+                    style={{
+                      padding: "10px 24px",
+                      borderRadius: 8,
+                      border: "none",
+                      background: "#111827",
+                      color: "#fff",
+                      cursor: "pointer",
+                      fontWeight: 500,
+                    }}
+                  >
+                    {savingAddress ? "Saving..." : "Save Address"}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setShowForm(false)}
+                    style={{
+                      padding: "10px 24px",
+                      borderRadius: 8,
+                      border: "1px solid #d1d5db",
+                      background: "#fff",
+                      cursor: "pointer",
+                    }}
+                  >
+                    Cancel
+                  </button>
+                </div>
+              </form>
             </div>
-          </form>
+          )}
 
-          {/* Address List */}
+          {/* Address Cards */}
           {addresses.length === 0 ? (
-            <p>No addresses added yet.</p>
+            <div
+              style={{
+                padding: 24,
+                borderRadius: 12,
+                border: "1px dashed #d1d5db",
+                textAlign: "center",
+                color: "#666",
+              }}
+            >
+              <div style={{ fontSize: 32, marginBottom: 8 }}>📍</div>
+              <p style={{ margin: 0 }}>No addresses added yet.</p>
+              <p style={{ margin: "4px 0 0", fontSize: 13 }}>Click "Add Address" to get started.</p>
+            </div>
           ) : (
-            <ul style={{ listStyle: "none", padding: 0 }}>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(260px, 1fr))", gap: 12 }}>
               {addresses.map((a) => (
-                <li
+                <div
                   key={a.id}
                   style={{
-                    padding: 10,
-                    border: "1px solid #e0e0e0",
-                    borderRadius: 8,
-                    marginBottom: 8,
+                    padding: 16,
+                    borderRadius: 12,
+                    border: a.isDefault ? "2px solid #111827" : "1px solid #e5e7eb",
+                    background: "#fff",
+                    position: "relative",
                   }}
                 >
-                  <strong>{a.label}</strong>{" "}
                   {a.isDefault && (
-                    <span style={{ color: "green", fontSize: 12 }}>
-                      (Default)
+                    <span
+                      style={{
+                        position: "absolute",
+                        top: 10,
+                        right: 10,
+                        background: "#111827",
+                        color: "#fff",
+                        fontSize: 11,
+                        padding: "2px 8px",
+                        borderRadius: 10,
+                      }}
+                    >
+                      Default
                     </span>
                   )}
 
-                  <div style={{ fontSize: 13 }}>
+                  <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 4 }}>
+                    {a.label === "Home" ? "🏠" : a.label === "Work" ? "💼" : "📍"} {a.label}
+                  </div>
+
+                  <div style={{ fontSize: 13, color: "#374151", lineHeight: 1.5 }}>
                     {a.line1}
-                    {a.area ? `, ${a.area}` : ""}
-                    {a.city ? `, ${a.city}` : ""}
-                    {a.pincode ? ` - ${a.pincode}` : ""}
+                    {a.area ? <div>{a.area}</div> : null}
+                    {a.city || a.pincode ? (
+                      <div>{[a.city, a.pincode].filter(Boolean).join(" - ")}</div>
+                    ) : null}
                   </div>
 
                   {a.phone && (
-                    <div style={{ fontSize: 13 }}>Phone: {a.phone}</div>
+                    <div style={{ fontSize: 12, color: "#666", marginTop: 4 }}>📞 {a.phone}</div>
                   )}
 
                   {a.mapUrl && (
-                    <div style={{ fontSize: 12 }}>
-                      <a href={a.mapUrl} target="_blank" rel="noreferrer">
-                        Open in Maps
-                      </a>
+                    <div style={{ fontSize: 12, marginTop: 4, color: "#666", fontStyle: "italic" }}>
+                      📝 {a.mapUrl}
                     </div>
                   )}
 
                   {!a.isDefault && (
                     <button
-                      style={{ marginTop: 6 }}
+                      style={{
+                        marginTop: 10,
+                        padding: "4px 12px",
+                        borderRadius: 6,
+                        border: "1px solid #d1d5db",
+                        background: "#f9fafb",
+                        cursor: "pointer",
+                        fontSize: 12,
+                      }}
                       onClick={() => handleSetDefaultAddress(a.id)}
                     >
-                      Set Default
+                      Set as Default
                     </button>
                   )}
-                </li>
+                </div>
               ))}
-            </ul>
+            </div>
           )}
         </>
       )}

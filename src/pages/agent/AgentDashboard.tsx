@@ -1,3 +1,5 @@
+// This is a simplified delivery agent dashboard for marking orders as delivered or not delivered.
+
 import { useEffect, useState } from "react";
 import TopBar from "../../components/common/TopBar";
 import { useAuth } from "../../context/AuthContext";
@@ -406,7 +408,7 @@ function navigateRoute(routeOrders: Order[]) {
                   <strong>Items:</strong>{" "}
                   {o.items.map((it, idx) => (
                     <span key={idx}>
-                      {it.name} × {it.qty}
+                      {it.name} ({it.unit}) × {it.qty}
                       {idx < o.items.length - 1 ? ", " : ""}
                     </span>
                   ))}
@@ -438,25 +440,41 @@ function navigateRoute(routeOrders: Order[]) {
                   </div>
                 )}
 
-                <div style={{ marginTop: 8, display: "flex", gap: 8 }}>
+                <div style={{ marginTop: 12, display: "flex", gap: 8 }}>
                   <button
                     disabled={updatingId === o.id}
-                    onClick={() =>
-                      void updateOrderStatus(o.id, "delivered")
-                    }
+                    onClick={() => void updateOrderStatus(o.id, "delivered")}
+                    style={{
+                      flex: 1,
+                      padding: "10px 0",
+                      borderRadius: 8,
+                      border: "none",
+                      background: updatingId === o.id ? "#d1d5db" : "#16a34a",
+                      color: "#fff",
+                      fontWeight: 600,
+                      fontSize: 14,
+                      cursor: updatingId === o.id ? "not-allowed" : "pointer",
+                    }}
                   >
-                    {updatingId === o.id
-                      ? "Updating..."
-                      : "Mark as Delivered"}
+                    {updatingId === o.id ? "Updating..." : "✅ Mark as Delivered"}
                   </button>
 
                   <button
                     disabled={updatingId === o.id}
-                    onClick={() =>
-                      void updateOrderStatus(o.id, "not_delivered")
-                    }
+                    onClick={() => void updateOrderStatus(o.id, "not_delivered")}
+                    style={{
+                      flex: 1,
+                      padding: "10px 0",
+                      borderRadius: 8,
+                      border: "none",
+                      background: updatingId === o.id ? "#d1d5db" : "#fee2e2",
+                      color: updatingId === o.id ? "#fff" : "#dc2626",
+                      fontWeight: 600,
+                      fontSize: 14,
+                      cursor: updatingId === o.id ? "not-allowed" : "pointer",
+                    }}
                   >
-                    Mark as Not Delivered
+                    ❌ Not Delivered
                   </button>
                 </div>
               </li>

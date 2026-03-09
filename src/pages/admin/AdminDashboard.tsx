@@ -1,6 +1,6 @@
-// === AdminDashboard.tsx ===[code here]
+// Admin dashboard for tenant management
 
-
+import SettingsTab from "./SettingsTab";
 import { createUserWithEmailAndPassword } from "firebase/auth";
 import { getSecondaryAuth } from "../../firebase";
 import { useEffect, useState } from "react";
@@ -16,6 +16,7 @@ import BillingTab from "./BillingTab";
 import ProductsTab from "./ProductsTab";
 import OrdersTab from "./OrdersTab";
 import DashboardTab from "./DashboardTab";
+import Toast from "../../components/common/Toast";
 import {
   doc,
   getDoc,
@@ -27,6 +28,8 @@ import {
   serverTimestamp,
   setDoc,
   increment,
+  updateDoc,
+  limit, orderBy
 } from "firebase/firestore";
 
 interface Tenant {
@@ -43,6 +46,7 @@ interface Product {
   unit: string;
   price: number;
   isActive: boolean;
+  categoryId?: string;
 }
 
 interface OrderItem {
@@ -80,6 +84,13 @@ interface TenantUser {
 export default function AdminDashboard() {
   const { user } = useAuth();
 
+  const [toastMessage, setToastMessage] = useState("");
+  const [toastType, setToastType] = useState<"success" | "error" | "info">("success");
+  const showToast = (msg: string, type: "success" | "error" | "info" = "success") => {
+    setToastMessage(msg);
+    setToastType(type);
+  };
+
   const [activeTab, setActiveTab] = useState<
   "dashboard" |
   "customers" |
@@ -87,7 +98,8 @@ export default function AdminDashboard() {
   "delivery" |
   "products" |
   "billing" |
-  "orders"
+  "orders" |
+  "settings"
 >("dashboard");
 
   // Tenant
@@ -99,6 +111,9 @@ export default function AdminDashboard() {
   const [products, setProducts] = useState<Product[]>([]);
   const [loadingProducts, setLoadingProducts] = useState(false);
   const [productsError, setProductsError] = useState("");
+
+  // Categories
+  const [categories, setCategories] = useState<{ id: string; name: string }[]>([]);
 
   // Orders
   const [orders, setOrders] = useState<Order[]>([]);
@@ -114,6 +129,7 @@ export default function AdminDashboard() {
   const [newName, setNewName] = useState("");
   const [newUnit, setNewUnit] = useState("");
   const [newPrice, setNewPrice] = useState("");
+  const [newCategory, setNewCategory] = useState("");
   const [savingProduct, setSavingProduct] = useState(false);
 
   // Customer form
@@ -216,7 +232,7 @@ const cred = await createUserWithEmailAndPassword(
 
     await loadUsersAndAssignments(tenant.id);
 
-    alert("Customer created successfully.");
+    showToast("Customer created successfully!", "success");
   } catch (err: any) {
     console.error(err);
     setCustomerError(err.message || "Failed to create customer.");
@@ -265,7 +281,7 @@ const cred = await createUserWithEmailAndPassword(
 
     await loadUsersAndAssignments(tenant.id);
 
-    alert("Agent created successfully.");
+    showToast("Agent created successfully!");
   } catch (err: any) {
     console.error(err);
     setAgentError(err.message || "Failed to create agent.");
@@ -309,6 +325,21 @@ const cred = await createUserWithEmailAndPassword(
     void loadTenant();
   }, [user]);
 
+  // ===== Categories for this tenant =====
+  async function loadCategories(tenantId: string) {
+    try {
+      const snap = await getDocs(collection(db, "tenants", tenantId, "categories"));
+      const list: { id: string; name: string }[] = [];
+      snap.forEach((docSnap) => {
+        const data = docSnap.data() as any;
+        list.push({ id: docSnap.id, name: data.name || "" });
+      });
+      setCategories(list);
+    } catch (err) {
+      console.error("Error loading categories", err);
+    }
+  }
+
   // ===== Products for this tenant =====
   async function loadProducts(tenantId: string) {
     setLoadingProducts(true);
@@ -327,6 +358,7 @@ const cred = await createUserWithEmailAndPassword(
           unit: data.unit || "",
           price: data.price ?? 0,
           isActive: data.isActive ?? true,
+          categoryId: data.categoryId || "",
         });
       });
       setProducts(list);
@@ -344,7 +376,9 @@ const cred = await createUserWithEmailAndPassword(
     setOrdersError("");
     try {
       const qOrders = query(
-        collection(db, "tenants", tenantId, "orders")
+        collection(db, "tenants", tenantId, "orders"),
+        orderBy("createdAt", "desc"),
+        limit(300)
       );
       const snap = await getDocs(qOrders);
       const list: Order[] = [];
@@ -482,8 +516,54 @@ console.log("Users found:", usersSnap.size, "for tenantId:", tenantId);
       void loadOrders(tenant.id);
       void loadAccounts(tenant.id);
       void loadUsersAndAssignments(tenant.id);
+      void loadCategories(tenant.id);
     }
   }, [tenant]);
+
+  // ===== Update product =====
+  async function handleUpdateProduct(id: string, updates: Partial<{ name: string; unit: string; price: number; categoryId: string }>) {
+    if (!tenant) return;
+    try {
+      const ref = doc(db, "tenants", tenant.id, "products", id);
+      await updateDoc(ref, { ...updates, updatedAt: serverTimestamp() });
+      await loadProducts(tenant.id);
+      showToast("Product updated successfully!");
+    } catch (err) {
+      console.error("Error updating product", err);
+      showToast("Failed to update product.", "error");
+    }
+  }
+
+  // ===== Toggle product active =====
+  async function handleToggleProductActive(id: string, isActive: boolean) {
+    if (!tenant) return;
+    try {
+      const ref = doc(db, "tenants", tenant.id, "products", id);
+      await updateDoc(ref, { isActive: !isActive, updatedAt: serverTimestamp() });
+      await loadProducts(tenant.id);
+      showToast(!isActive ? "Product activated!" : "Product deactivated!");
+    } catch (err) {
+      console.error("Error toggling product", err);
+      showToast("Failed to update product.", "error");
+    }
+  }
+
+// ===== Create category =====
+  async function handleCreateCategory(name: string) {
+    if (!tenant) return;
+    try {
+      await addDoc(collection(db, "tenants", tenant.id, "categories"), {
+        name,
+        tenantId: tenant.id,
+        createdAt: serverTimestamp(),
+      });
+      console.log("Category saved, reloading...");
+      await loadCategories(tenant.id);
+      console.log("Categories after reload:", categories);
+    } catch (err) {
+      console.error("Error creating category", err);
+    }
+  }
 
   // ===== Create product =====
   async function handleCreateProduct(e: React.FormEvent) {
@@ -510,12 +590,14 @@ console.log("Users found:", usersSnap.size, "for tenantId:", tenantId);
         unit: newUnit.trim(),
         price: priceNumber,
         isActive: true,
+        categoryId: newCategory || "",
         createdAt: serverTimestamp(),
       });
 
       setNewName("");
       setNewUnit("");
       setNewPrice("");
+      setNewCategory("");
 
       await loadProducts(tenant.id);
     } catch (err) {
@@ -582,10 +664,6 @@ function formatCustomerLabel(customerId: string): string {
   async function handleGenerateOrdersFromSubscriptions() {
     if (!tenant) return;
 
-    const confirmRun = window.confirm(
-      "Generate orders from all active subscriptions for this store?"
-    );
-    if (!confirmRun) return;
 
     const now = new Date();
     const todayWeekday = now.getDay();
@@ -668,6 +746,7 @@ const p = addDoc(collection(db, "tenants", tenant.id, "orders"), {
   createdAt: serverTimestamp(),
   source: "subscription",
   subscriptionId: subDoc.id,
+  orderDate: todayStr,
   items: [item],
   deliveryAddress,
 });
@@ -676,12 +755,12 @@ const p = addDoc(collection(db, "tenants", tenant.id, "orders"), {
       });
 
       await Promise.all(createPromises);
-      alert("Orders generated from subscriptions.");
+      showToast("Orders generated from subscriptions!", "success");
 
       await loadOrders(tenant.id);
     } catch (err) {
       console.error("Error generating orders from subscriptions", err);
-      alert("Failed to generate orders from subscriptions.");
+      showToast("Failed to generate orders from subscriptions.", "error");
     }
   }
 
@@ -873,7 +952,7 @@ async function handleGenerateInvoice(e: React.FormEvent) {
       year: Number(invYear),
       month: Number(invMonth),
     });
-    alert("Invoice generated.");
+    showToast("Invoice generated successfully!", "success");
   } catch (err) {
     console.error("Failed to generate invoice", err);
     setInvError("Failed to generate invoice.");
@@ -881,6 +960,21 @@ async function handleGenerateInvoice(e: React.FormEvent) {
     setInvSaving(false);
   }
 }
+
+ // ===== UPDATE ORDER STATUS =====
+  async function handleUpdateOrderStatus(orderId: string, status: string) {
+    if (!tenant) return;
+    try {
+      const ref = doc(db, "tenants", tenant.id, "orders", orderId);
+      await updateDoc(ref, {
+        status,
+        updatedAt: serverTimestamp(),
+      });
+      await loadOrders(tenant.id);
+    } catch (err) {
+      console.error("Error updating order status", err);
+    }
+  }
 
   // ===== SAVE ASSIGNMENT (customer ↔ agent + route) =====
   async function handleSaveAssignment(customerId: string) {
@@ -956,6 +1050,13 @@ async function handleGenerateInvoice(e: React.FormEvent) {
 
   return (
     <div style={{ background: "#f9fafb", minHeight: "100vh" }}>
+      {toastMessage && (
+        <Toast
+          message={toastMessage}
+          type={toastType}
+          onClose={() => setToastMessage("")}
+        />
+      )}
       <TopBar title="Tenant Admin Panel" />
       <div
   style={{
@@ -996,6 +1097,7 @@ async function handleGenerateInvoice(e: React.FormEvent) {
     { key: "products", label: "📦 Products" },
     { key: "billing", label: "💰 Billing" },
     { key: "orders", label: "🧾 Orders" },
+    { key: "settings", label: "⚙️ Settings" },
   ].map((tab) => (
     <button
       key={tab.key}
@@ -1053,6 +1155,10 @@ async function handleGenerateInvoice(e: React.FormEvent) {
   />
 )}
 
+{activeTab === "settings" && (
+          <SettingsTab />
+        )}
+        
         {/* Delivery Routes & Customer Assignment */}
         {activeTab === "delivery" && (
   <DeliveryTab
@@ -1126,16 +1232,22 @@ async function handleGenerateInvoice(e: React.FormEvent) {
   <ProductsTab
     cardStyle={cardStyle}
     products={products}
+    categories={categories}
     loadingProducts={loadingProducts}
     productsError={productsError}
     newName={newName}
     newUnit={newUnit}
     newPrice={newPrice}
+    newCategory={newCategory}
     savingProduct={savingProduct}
     setNewName={setNewName}
     setNewUnit={setNewUnit}
     setNewPrice={setNewPrice}
+    setNewCategory={setNewCategory}
     handleCreateProduct={handleCreateProduct}
+    handleCreateCategory={handleCreateCategory}
+    handleUpdateProduct={handleUpdateProduct}
+    handleToggleProductActive={handleToggleProductActive}
   />
 )}
 
@@ -1147,6 +1259,7 @@ async function handleGenerateInvoice(e: React.FormEvent) {
     loadingOrders={loadingOrders}
     ordersError={ordersError}
     formatCustomerLabel={formatCustomerLabel}
+    handleUpdateOrderStatus={handleUpdateOrderStatus}
   />
 )}
       </div>

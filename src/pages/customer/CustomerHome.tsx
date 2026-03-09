@@ -1,4 +1,4 @@
-// === CustomerHome.tsx === [code here] 
+// This is a large file that contains the main customer home page with multiple tabs (dashboard, wallet, addresses, products, subscriptions, orders).
 
 import TopBar from "../../components/common/TopBar";
 import Toast from "../../components/common/Toast";
@@ -29,6 +29,7 @@ interface Product {
   name: string;
   unit: string;
   price: number;
+  categoryId?: string;
 }
 
 interface Order {
@@ -141,8 +142,27 @@ function formatAddress(addr: DeliveryAddress | undefined): string {
 export default function CustomerHome() {
   const { user } = useAuth();
 
+  // ===== Store Settings State =====
+  const [tenantSettings, setTenantSettings] = useState<any>(null);
+
+  useEffect(() => {
+    async function loadTenantSettings() {
+      if (!user?.tenantId) return;
+      try {
+        const snap = await getDoc(doc(db, "tenants", user.tenantId));
+        if (snap.exists()) {
+          setTenantSettings(snap.data().settings || null);
+        }
+      } catch (err) {
+        console.error("Failed to load tenant settings", err);
+      }
+    }
+    loadTenantSettings();
+  }, [user]);
+
   // Products & Orders
   const [products, setProducts] = useState<Product[]>([]);
+  const [categories, setCategories] = useState<{ id: string; name: string }[]>([]);
   const [loadingProducts, setLoadingProducts] = useState(true);
   const [errorProducts, setErrorProducts] = useState("");
 
@@ -360,9 +380,30 @@ const tabs = [
             name: data.name || "",
             unit: data.unit || "",
             price: data.price ?? 0,
+            categoryId: data.categoryId || "",
           });
         });
+         console.log("Products loaded:", list);
         setProducts(list);
+        
+        setProducts(list);
+
+        // Load categories
+        try {
+          const catSnap = await getDocs(collection(db, "tenants", user.tenantId!, "categories"));
+          const catList: { id: string; name: string }[] = [];
+          catSnap.forEach((docSnap) => {
+            const data = docSnap.data() as any;
+            catList.push({ id: docSnap.id, name: data.name || "" });
+          });
+
+          console.log("Categories loaded:", catList);
+          setCategories(catList);
+
+          setCategories(catList);
+        } catch (err) {
+          console.warn("Error loading categories", err);
+        }
       } catch (err) {
         console.error("Error loading products for customer", err);
         setErrorProducts("Failed to load products.");
@@ -859,6 +900,10 @@ if (assignSnap.exists()) {
 
   async function toggleSubscriptionActive(sub: Subscription) {
     if (!user) return;
+    if (isPastCutoffTime()) {
+      showToast("Cutoff time passed. Please contact the store manager for assistance to pause or resume your subscription.", "error");
+      return;
+    }
     try {
       const ref = doc(db, "tenants", user.tenantId!, "subscriptions", sub.id);
       await updateDoc(ref, {
@@ -872,11 +917,32 @@ if (assignSnap.exists()) {
     }
   }
 
+  // ===== Cutoff Time Check =====
+  function isPastCutoffTime(): boolean {
+    if (!tenantSettings?.operations?.customerCutoffTime) return false; // If shop owner didn't set a time, allow it
+    
+    const cutoffTime = tenantSettings.operations.customerCutoffTime; // e.g., "22:00"
+    const [cutoffHour, cutoffMin] = cutoffTime.split(":").map(Number);
+
+    const now = new Date();
+    const currentHour = now.getHours();
+    const currentMin = now.getMinutes();
+
+    if (currentHour > cutoffHour || (currentHour === cutoffHour && currentMin >= cutoffMin)) {
+      return true;
+    }
+    return false;
+  }
+  
   async function handleSkipTomorrow(sub: Subscription) {
     if (!user) return;
+    if (isPastCutoffTime()) {
+      showToast("Cutoff time passed. Please contact the store manager for assistance to modify tomorrow's delivery.", "error");
+      return;
+    }
     const tomorrow = new Date();
-    tomorrow.setDate(tomorrow.getDate() + 1);
-    const dateStr = tomorrow.toISOString().slice(0, 10);
+tomorrow.setDate(tomorrow.getDate() + 1);
+const dateStr = tomorrow.toLocaleDateString('en-CA');
 
     const existing = sub.skipDates ?? [];
     if (existing.includes(dateStr)) {
@@ -946,16 +1012,7 @@ if (assignSnap.exists()) {
         />
       )}
       <TopBar title="Customer App" />
-      <div
-  style={{
-    display: "flex",
-    gap: 12,
-    padding: "12px 16px",
-    borderBottom: "1px solid #e5e7eb",
-    marginBottom: 16,
-  }}
->
-  </div>
+      <div style={{ padding: 16 }}>
 
 {activeTab === "dashboard" && (
   <DashboardTab
@@ -964,7 +1021,6 @@ if (assignSnap.exists()) {
     totalOrders={orders.length}
   />
 )}
-      <div style={{ padding: 16, maxWidth: 900, margin: "0 auto" }}>
         {/* Wallet / Billing summary */}
         {activeTab === "wallet" && (
   <WalletTab
@@ -1012,6 +1068,7 @@ if (assignSnap.exists()) {
         {activeTab === "products" && (
   <ProductsTab
     products={products}
+    categories={categories}
     loadingProducts={loadingProducts}
     errorProducts={errorProducts}
     placingOrderId={placingOrderId}
