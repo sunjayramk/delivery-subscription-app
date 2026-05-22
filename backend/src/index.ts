@@ -53,9 +53,6 @@ export const generateDailyOrders = onSchedule(
       datesToGenerate.push({ dateObj: d, dateStr, dayOfWeek: d.getDay() });
     }
 
-    const startDateStr = datesToGenerate[0].dateStr;
-    const endDateStr = datesToGenerate[6].dateStr;
-
     // 2. Load all tenants
     const tenantsSnap = await db.collection("tenants").get();
 
@@ -76,18 +73,7 @@ export const generateDailyOrders = onSchedule(
           if (data.customerId && data.routeName) routeMap[data.customerId] = data.routeName;
         });
 
-        // Fetch Existing Orders to Prevent Duplicates (1 Query instead of 100s!)
-        const existingSnap = await db.collection("tenants").doc(tenantId).collection("orders")
-          .where("orderDate", ">=", startDateStr)
-          .where("orderDate", "<=", endDateStr).get();
-
-        const existingOrderKeys = new Set<string>();
-        existingSnap.forEach(docSnap => {
-          const data = docSnap.data();
-          if (data.source === "subscription" && data.customerId && data.shift && data.orderDate) {
-            existingOrderKeys.add(`${data.customerId}_${data.shift}_${data.orderDate}`);
-          }
-        });
+        
 
         const ordersToCreate = new Map<string, any>();
 
@@ -121,8 +107,7 @@ export const generateDailyOrders = onSchedule(
             const shift = data.shift || "Morning";
             const uniqueKey = `${customerId}_${shift}_${dateStr}`;
 
-            if (existingOrderKeys.has(uniqueKey)) return;
-
+           
             // Group multiple subscriptions for the same person/day into one Order
             if (!ordersToCreate.has(uniqueKey)) {
               const routeName = routeMap[customerId] || "";
@@ -161,9 +146,12 @@ export const generateDailyOrders = onSchedule(
           let chunkIndex = 0;
           let totalCount = 0;
 
-          for (const [, orderData] of ordersToCreate.entries()) {
-            const newOrderRef = db.collection("tenants").doc(tenantId).collection("orders").doc();
-            batchChunks[chunkIndex].set(newOrderRef, orderData);
+          for (const [uniqueKey, orderData] of ordersToCreate.entries()) {
+            // Use the unique key (customerId_shift_date) as the actual document ID
+            const newOrderRef = db.collection("tenants").doc(tenantId).collection("orders").doc(uniqueKey);
+
+            // Use { merge: true } so if the order already exists, it safely ignores it instead of creating a duplicate
+            batchChunks[chunkIndex].set(newOrderRef, orderData, { merge: true });
             opCount++;
             totalCount++;
 

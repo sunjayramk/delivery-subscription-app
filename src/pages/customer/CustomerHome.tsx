@@ -260,6 +260,7 @@ export default function CustomerHome() {
 
   useEffect(() => {
     async function loadWallet() {
+      if (activeTab !== "wallet" && activeTab !== "dashboard") return;
       if (!user || !user.tenantId) { setWalletLoading(false); return; }
       setWalletLoading(true); setWalletError("");
       try {
@@ -302,7 +303,7 @@ export default function CustomerHome() {
       } catch (err) { setWalletError("Failed to load wallet."); } finally { setWalletLoading(false); }
     }
     void loadWallet();
-  }, [user]);
+  }, [user, activeTab]);
 
   useEffect(() => {
     async function loadProducts() {
@@ -366,6 +367,7 @@ export default function CustomerHome() {
 
   useEffect(() => {
     async function loadOrders() {
+      if (activeTab !== "wallet" && activeTab !== "subscriptions") return;
       if (!user || !user.tenantId) { setLoadingOrders(false); return; }
       try {
         const qOrders = query(collection(db, "tenants", user.tenantId, "orders"), where("customerId", "==", user.uid));
@@ -379,10 +381,11 @@ export default function CustomerHome() {
       } catch (err) { setErrorOrders("Failed to load orders."); } finally { setLoadingOrders(false); }
     }
     void loadOrders();
-  }, [user]);
+  }, [user, activeTab]);
 
   useEffect(() => {
     async function loadSubscriptions() {
+      if (activeTab !== "subscriptions" && activeTab !== "dashboard") return;
       if (!user || !user.tenantId) { setLoadingSubs(false); return; }
       try {
         const qSubs = query(collection(db, "tenants", user.tenantId, "subscriptions"), where("customerId", "==", user.uid));
@@ -400,7 +403,7 @@ export default function CustomerHome() {
       } catch (err) { setErrorSubs("Failed to load subscriptions."); } finally { setLoadingSubs(false); }
     }
     void loadSubscriptions();
-  }, [user]);
+  }, [user, activeTab]);
 
   useEffect(() => {
     async function loadAddresses() {
