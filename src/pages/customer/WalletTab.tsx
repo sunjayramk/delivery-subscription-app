@@ -26,11 +26,11 @@ export default function WalletTab({
     }
     
     setIsProcessing(true);
-    console.log(`Initiating Razorpay for ₹${topupAmount}...`);
+    console.log(`Initiating Razorpay for Rs.${topupAmount}...`);
     
-    // 🚧 RAZORPAY LOGIC WILL GO HERE IN THE NEXT STEP 🚧
+    // Work RAZORPAY LOGIC WILL GO HERE IN THE NEXT STEP Work
     setTimeout(() => {
-      alert(`Razorpay Gateway will open for ₹${topupAmount}`);
+      alert(`Razorpay Gateway will open for Rs.${topupAmount}`);
       setIsProcessing(false);
     }, 1000);
   };
@@ -38,13 +38,13 @@ export default function WalletTab({
   if (walletLoading) return <div style={{ padding: 40, textAlign: "center" }}>Loading wallet...</div>;
   if (walletError) return <div style={{ padding: 40, textAlign: "center", color: "#dc2626" }}>{walletError}</div>;
 
-  // 🔴 Dynamic styling: If walletBalance > 0, they owe money (Due).
+  // Red Dynamic styling: If walletBalance > 0, they owe money (Due).
   const isDue = walletBalance > 0;
 
   return (
     <div style={{ padding: 16 }}>
       
-      {/* 💳 THE WALLET CARD (Dynamically changes color!) */}
+      {/* THE WALLET CARD (Dynamically changes color!) */}
       <div style={{ 
         background: isDue 
           ? "linear-gradient(135deg, #991b1b 0%, #dc2626 100%)" // Alarm Red for Dues
@@ -68,7 +68,7 @@ export default function WalletTab({
           <p style={{ margin: 0, fontSize: 14, opacity: 0.9, fontWeight: 500, textTransform: "uppercase", letterSpacing: 1 }}>Current Balance</p>
           <h2 style={{ margin: "8px 0", fontSize: 36, fontWeight: 800 }}>
             {/* Show the minus sign if they owe money */}
-            {isDue ? "-" : ""}₹{Math.abs(walletBalance).toFixed(2)}
+            {isDue ? "-" : ""}Rs.{Math.abs(walletBalance).toFixed(2)}
             <span style={{ fontSize: 16, fontWeight: 600, marginLeft: 8, opacity: 0.9 }}>
               {isDue ? "Due" : walletBalance < 0 ? "Cr" : ""}
             </span>
@@ -77,17 +77,17 @@ export default function WalletTab({
           <div style={{ display: "flex", gap: 24, marginTop: 20, paddingTop: 16, borderTop: "1px solid rgba(255,255,255,0.2)" }}>
             <div>
               <p style={{ margin: 0, fontSize: 11, opacity: 0.8 }}>Total Recharged</p>
-              <p style={{ margin: "4px 0 0 0", fontSize: 15, fontWeight: 700 }}>₹{walletTotalPaid.toFixed(2)}</p>
+              <p style={{ margin: "4px 0 0 0", fontSize: 15, fontWeight: 700 }}>Rs.{walletTotalPaid.toFixed(2)}</p>
             </div>
             <div>
               <p style={{ margin: 0, fontSize: 11, opacity: 0.8 }}>Total Consumed</p>
-              <p style={{ margin: "4px 0 0 0", fontSize: 15, fontWeight: 700 }}>₹{walletTotalBilled.toFixed(2)}</p>
+              <p style={{ margin: "4px 0 0 0", fontSize: 15, fontWeight: 700 }}>Rs.{walletTotalBilled.toFixed(2)}</p>
             </div>
           </div>
         </div>
       </div>
 
-      {/* ⚡ ADD MONEY SECTION */}
+      {/* Fast ADD MONEY SECTION */}
       <div style={{ background: "#fff", borderRadius: 16, padding: 20, boxShadow: "0 2px 8px rgba(0,0,0,0.04)", marginBottom: 24, border: "1px solid #e5e7eb" }}>
         <h3 style={{ margin: "0 0 16px 0", fontSize: 16, color: "#111827" }}>Add Money to Wallet</h3>
         
@@ -104,7 +104,7 @@ export default function WalletTab({
                 border: topupAmount === amt.toString() ? "2px solid #2563eb" : "1px solid #d1d5db"
               }}
             >
-              +₹{amt}
+              +Rs.{amt}
             </button>
           ))}
         </div>
@@ -112,7 +112,7 @@ export default function WalletTab({
         {/* Custom Input & Pay Button */}
         <div style={{ display: "flex", gap: 12 }}>
           <div style={{ flex: 1, position: "relative" }}>
-            <span style={{ position: "absolute", left: 14, top: 12, color: "#6b7280", fontWeight: 600 }}>₹</span>
+            <span style={{ position: "absolute", left: 14, top: 12, color: "#6b7280", fontWeight: 600 }}>Rs.</span>
             <input 
               type="number" 
               placeholder="Enter amount" 
@@ -134,7 +134,7 @@ export default function WalletTab({
         </div>
       </div>
 
-      {/* 📜 RECENT TRANSACTIONS */}
+      {/* Log RECENT TRANSACTIONS */}
       <div>
         <h3 style={{ margin: "0 0 16px 0", fontSize: 16, color: "#111827" }}>Recent Transactions</h3>
         {walletTx.length === 0 ? (
@@ -147,7 +147,7 @@ export default function WalletTab({
               <div key={tx.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", background: "#fff", padding: 16, borderRadius: 12, border: "1px solid #e5e7eb" }}>
                 <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
                   <div style={{ width: 40, height: 40, borderRadius: "50%", background: tx.type === "credit" ? "#dcfce7" : "#fef2f2", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 18 }}>
-                    {tx.type === "credit" ? "↓" : "↑"}
+                    {tx.type === "credit" ? "down" : "up"}
                   </div>
                   <div>
                     <p style={{ margin: 0, fontSize: 14, fontWeight: 600, color: "#111827" }}>
@@ -159,7 +159,7 @@ export default function WalletTab({
                   </div>
                 </div>
                 <div style={{ fontWeight: 800, fontSize: 15, color: tx.type === "credit" ? "#16a34a" : "#111827" }}>
-                  {tx.type === "credit" ? "+" : "-"}₹{tx.amount.toFixed(2)}
+                  {tx.type === "credit" ? "+" : "-"}Rs.{tx.amount.toFixed(2)}
                 </div>
               </div>
             ))}

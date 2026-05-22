@@ -18,7 +18,7 @@ export async function generateInvoiceForCustomerMonth(params: {
   customerId: string;
   year: number;
   month: number;
-  deliveryCharge?: number; // ✅ 1. We tell TypeScript to expect the new fee
+  deliveryCharge?: number; // 1. We tell TypeScript to expect the new fee
 }) {
   const { tenantId, customerId, year, month, deliveryCharge } = params;
   
@@ -63,11 +63,11 @@ export async function generateInvoiceForCustomerMonth(params: {
     }
   });
 
-  // ✅ 2. Add the delivery fee to the invoice total
+  // 2. Add the delivery fee to the invoice total
   totalDebits += deliveryFee;
   const closingBalance = totalDebits - totalCredits;
 
-  // ✅ 3. Actually charge the customer's wallet so the math balances out everywhere
+  // 3. Actually charge the customer's wallet so the math balances out everywhere
   if (deliveryFee > 0) {
     // Record it in the ledger
     await addDoc(collection(db, "tenants", tenantId, "billingTransactions"), {

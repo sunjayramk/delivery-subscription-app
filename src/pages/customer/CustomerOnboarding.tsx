@@ -144,7 +144,7 @@ export default function CustomerOnboarding({ onComplete }: { onComplete: () => v
 
         {step === 1 ? (
           <div style={{ animation: "fadeIn 0.3s ease" }}>
-            <h1 style={{ fontSize: 28, fontWeight: 800, marginBottom: 8 }}>Welcome! 👋</h1>
+            <h1 style={{ fontSize: 28, fontWeight: 800, marginBottom: 8 }}>Welcome! Hi</h1>
             <p style={{ color: "#6b7280", marginBottom: 32 }}>Tell us a bit about yourself to get started.</p>
             
             <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
@@ -160,7 +160,7 @@ export default function CustomerOnboarding({ onComplete }: { onComplete: () => v
           </div>
         ) : (
           <form onSubmit={handleFinish} style={{ animation: "fadeIn 0.3s ease" }}>
-            <h1 style={{ fontSize: 28, fontWeight: 800, marginBottom: 8 }}>Delivery Location 📍</h1>
+            <h1 style={{ fontSize: 28, fontWeight: 800, marginBottom: 8 }}>Delivery Location Location</h1>
             <p style={{ color: "#6b7280", marginBottom: 24 }}>Where should we deliver your fresh milk?</p>
 
             <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
@@ -172,7 +172,7 @@ export default function CustomerOnboarding({ onComplete }: { onComplete: () => v
                     type="text" 
                     value={searchQuery}
                     onChange={handleSearchInput}
-                    placeholder="🔍 Search building, society, or landmark..." 
+                    placeholder="Search Search building, society, or landmark..." 
                     style={{ width: "100%", padding: 12, borderRadius: 8, border: "1px solid #d1d5db", backgroundColor: "#f9fafb", boxSizing: "border-box" }} 
                   />
                   {predictions.length > 0 && (
@@ -208,7 +208,7 @@ export default function CustomerOnboarding({ onComplete }: { onComplete: () => v
                 <div style={{ display: "flex", gap: 8 }}>
                   {["Home", "Work", "Other"].map((type) => (
                     <button key={type} type="button" onClick={() => setAddressType(type)} style={{ flex: 1, padding: "10px", borderRadius: "8px", border: addressType === type ? "2px solid #16a34a" : "1px solid #d1d5db", background: addressType === type ? "#f0fdf4" : "#fff", color: addressType === type ? "#16a34a" : "#4b5563", fontWeight: 600, cursor: "pointer", transition: "all 0.2s" }}>
-                      {type === "Home" ? "🏠 " : type === "Work" ? "🏢 " : "📍 "}{type}
+                      {type === "Home" ? "" : type === "Work" ? "" : "Location "}{type}
                     </button>
                   ))}
                 </div>

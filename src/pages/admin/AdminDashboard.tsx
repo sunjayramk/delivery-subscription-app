@@ -19,7 +19,7 @@ import SubscriptionPlansTab from "./SubscriptionPlansTab";
 import TeamTab from "./TeamTab";
 import DailyManifest from "./DailyManifest";
 
-// ✅ FIX 1: Added Timestamp to the Firebase imports
+// FIX 1: Added Timestamp to the Firebase imports
 import {
   doc,
   getDoc,
@@ -40,7 +40,7 @@ import {
 import { storage } from "../../firebase";
 import { ref, uploadBytes, getDownloadURL } from "firebase/storage";
 
-// ✅ FIX 2: Added the MONTHS array right here at the top
+// FIX 2: Added the MONTHS array right here at the top
 const MONTHS = [
   { value: "1", label: "January" }, { value: "2", label: "February" },
   { value: "3", label: "March" }, { value: "4", label: "April" },
@@ -186,7 +186,7 @@ export default function AdminDashboard() {
     }
     const cleanPhone = profile.phone.replace(/\D/g, "");
     const finalPhone = cleanPhone.length === 10 ? `91${cleanPhone}` : cleanPhone;
-    const message = `Hello ${profile.name || "Customer"}, this is a reminder from ${tenant?.name || "our store"}. Your current balance is *₹${balance.toFixed(2)}*. Thank you!`;
+    const message = `Hello ${profile.name || "Customer"}, this is a reminder from ${tenant?.name || "our store"}. Your current balance is *Rs.${balance.toFixed(2)}*. Thank you!`;
     window.open(`https://wa.me/${finalPhone}?text=${encodeURIComponent(message)}`, "_blank");
   };
 
@@ -278,7 +278,7 @@ export default function AdminDashboard() {
       
       const mornStr = log.morning.length > 0 ? log.morning.join("<br/>") : "-";
       const eveStr = log.evening.length > 0 ? log.evening.join("<br/>") : "-";
-      const amtStr = log.total > 0 ? `₹${log.total.toFixed(2)}` : "-";
+      const amtStr = log.total > 0 ? `Rs.${log.total.toFixed(2)}` : "-";
 
       tableRows += `
         <tr>
@@ -322,7 +322,7 @@ export default function AdminDashboard() {
             ${tableRows}
             <tr style="background-color: #f3f4f6;">
               <td colspan="4" style="padding: 10px; border: 1px solid #000; text-align: right; font-weight: bold;">Sub Total for ${monthName}</td>
-              <td style="padding: 10px; border: 1px solid #000; text-align: right; font-weight: bold;">₹${(inv.subscriptionCharges + inv.oneTimeCharges).toFixed(2)}</td>
+              <td style="padding: 10px; border: 1px solid #000; text-align: right; font-weight: bold;">Rs.${(inv.subscriptionCharges + inv.oneTimeCharges).toFixed(2)}</td>
             </tr>
           </tbody>
         </table>
@@ -332,33 +332,33 @@ export default function AdminDashboard() {
           
           <div style="display: flex; justify-content: space-between; margin-bottom: 5px;">
             <span>Subscription Orders</span>
-            <span>₹${(inv.subscriptionCharges || 0).toFixed(2)}</span>
+            <span>Rs.${(inv.subscriptionCharges || 0).toFixed(2)}</span>
           </div>
           <div style="display: flex; justify-content: space-between; margin-bottom: 5px;">
             <span>Other Orders</span>
-            <span>₹${(inv.oneTimeCharges || 0).toFixed(2)}</span>
+            <span>Rs.${(inv.oneTimeCharges || 0).toFixed(2)}</span>
           </div>
           <div style="display: flex; justify-content: space-between; margin-bottom: 5px;">
             <span>Delivery & Other Charges</span>
-            <span>₹${(inv.deliveryCharge || 0).toFixed(2)}</span>
+            <span>Rs.${(inv.deliveryCharge || 0).toFixed(2)}</span>
           </div>
           <div style="display: flex; justify-content: space-between; margin-bottom: 5px; color: green;">
             <span>(Minus) Total Payments</span>
-            <span>- ₹${(inv.totalCredits || 0).toFixed(2)}</span>
+            <span>- Rs.${(inv.totalCredits || 0).toFixed(2)}</span>
           </div>
           
           <div style="border-top: 1px solid #ccc; margin: 10px 0;"></div>
           
           <div style="display: flex; justify-content: space-between; margin-bottom: 5px; color: #dc2626;">
             <span>Previous Month Balance</span>
-            <span>₹${prevBalance.toFixed(2)}</span>
+            <span>Rs.${prevBalance.toFixed(2)}</span>
           </div>
           
           <div style="border-top: 2px solid #000; margin: 10px 0;"></div>
           
           <div style="display: flex; justify-content: space-between; margin-bottom: 5px; font-weight: bold; font-size: 16px;">
             <span>Total Due in ${monthName}</span>
-            <span>₹${(inv.closingBalance || 0).toFixed(2)}</span>
+            <span>Rs.${(inv.closingBalance || 0).toFixed(2)}</span>
           </div>
         </div>
 
@@ -386,7 +386,7 @@ export default function AdminDashboard() {
       alert("No phone number saved for this customer!");
       return;
     }
-    const message = `Hello ${customer.name},\n\nYour invoice for ${inv.periodMonth}/${inv.periodYear} from *${tenant?.name || "our store"}* is ready.\n\n*Total Due: ₹${inv.closingBalance}*\n\nPlease arrange the payment at your earliest convenience. Thank you!`;
+    const message = `Hello ${customer.name},\n\nYour invoice for ${inv.periodMonth}/${inv.periodYear} from *${tenant?.name || "our store"}* is ready.\n\n*Total Due: Rs.${inv.closingBalance}*\n\nPlease arrange the payment at your earliest convenience. Thank you!`;
     const waUrl = `https://wa.me/91${customer.phone}?text=${encodeURIComponent(message)}`;
     window.open(waUrl, "_blank");
   }
@@ -428,7 +428,7 @@ export default function AdminDashboard() {
     loadTenantAndRole();
   }, [userId, tenantId]);
 
-  // ✅ SECURITY MATRIX: Put this HIGH UP, before any 'if (loading) return' statements!
+  // SECURITY MATRIX: Put this HIGH UP, before any 'if (loading) return' statements!
   const allowedTabs = ROLE_PERMISSIONS[currentUserRole] || ROLE_PERMISSIONS["admin"];
 
   useEffect(() => {
@@ -437,7 +437,7 @@ export default function AdminDashboard() {
     }
   }, [activeTab, allowedTabs]);
 
-  // ✅ FIX 1: Make sure we actually pull the sortOrder from the database!
+  // FIX 1: Make sure we actually pull the sortOrder from the database!
   async function loadCategories(tId: string) {
     const snap = await getDocs(collection(db, "tenants", tId, "categories"));
     setCategories(snap.docs.map(d => {
@@ -446,13 +446,13 @@ export default function AdminDashboard() {
     }));
   }
 
-  // ✅ FIX 2: Ensure banners are loaded
+  // FIX 2: Ensure banners are loaded
   async function loadBanners(tId: string) {
     const snap = await getDocs(collection(db, "tenants", tId, "banners"));
     setBanners(snap.docs.map(d => ({ id: d.id, ...d.data() })));
   }
 
-  // ✅ FIX 3: Trigger the loaders when the tenant is found
+  // FIX 3: Trigger the loaders when the tenant is found
   useEffect(() => {
     if (tenant) {
       loadProducts(tenant.id); 
@@ -554,10 +554,10 @@ export default function AdminDashboard() {
     setTenantCustomers(custs); setCustomerProfileMap(pMap);
   }
 
-  async function handleCreateCategory(name: string, sortOrder: number) { // ✅ Added sortOrder
+  async function handleCreateCategory(name: string, sortOrder: number) { // Added sortOrder
     if (!tenant) return;
     try {
-      await addDoc(collection(db, "tenants", tenant.id, "categories"), { name, sortOrder, tenantId: tenant.id, createdAt: serverTimestamp() }); // ✅ Saving sortOrder
+      await addDoc(collection(db, "tenants", tenant.id, "categories"), { name, sortOrder, tenantId: tenant.id, createdAt: serverTimestamp() }); // Saving sortOrder
       loadCategories(tenant.id);
       showToast("Category added!");
     } catch (err) { console.error(err); }
@@ -576,10 +576,10 @@ export default function AdminDashboard() {
       }
       await addDoc(collection(db, "tenants", tenant.id, "products"), {
         tenantId: tenant.id, name: newName, unit: newUnit, price: Number(newPrice), isActive: true, categoryId: newCategory, imageUrl, 
-        isSubscribable: newIsSubscribable, // ✅ SAVING THE FLAG HERE
+        isSubscribable: newIsSubscribable, // SAVING THE FLAG HERE
         createdAt: serverTimestamp()
       });
-      setNewName(""); setNewUnit(""); setNewPrice(""); setNewImage(null); setNewIsSubscribable(false); // ✅ Reset it
+      setNewName(""); setNewUnit(""); setNewPrice(""); setNewImage(null); setNewIsSubscribable(false); // Reset it
       loadProducts(tenant.id);
       showToast("Product created!");
     } finally { setSavingProduct(false); }
@@ -611,7 +611,7 @@ export default function AdminDashboard() {
       const amount = Number(paymentAmount);
       await addDoc(collection(db, "tenants", tenant.id, "billingTransactions"), { customerId: paymentCustomerId, type: "payment", amount, createdAt: serverTimestamp() });
       await setDoc(doc(db, "tenants", tenant.id, "customerAccounts", `${tenant.id}_${paymentCustomerId}`), { outstandingDue: increment(-amount) }, { merge: true });
-      await createNotification({ tenantId: tenant.id, userId: paymentCustomerId, type: "payment", title: "Payment received", message: `₹${amount} recorded.` });
+      await createNotification({ tenantId: tenant.id, userId: paymentCustomerId, type: "payment", title: "Payment received", message: `Rs.${amount} recorded.` });
       setPaymentAmount(""); setPaymentCustomerId(""); loadAccounts(tenant.id);
       showToast("Payment recorded!");
     } finally { setSavingPayment(false); }

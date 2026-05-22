@@ -19,7 +19,7 @@ export default function ProductsTab({
   if (loadingProducts) return <div style={{ padding: 40, textAlign: "center", color: "#6b7280", fontWeight: 600 }}>Loading fresh products...</div>;
   if (errorProducts) return <div style={{ padding: 40, textAlign: "center", color: "#dc2626", fontWeight: 600 }}>{errorProducts}</div>;
 
-  // 🧩 REUSABLE PRODUCT CARD COMPONENT
+  // Module REUSABLE PRODUCT CARD COMPONENT
   const renderProductCard = (product: any) => {
     const qtyInCart = cart[product.id] || 0;
     return (
@@ -29,7 +29,7 @@ export default function ProductsTab({
           {product.imageUrl ? (
             <img src={product.imageUrl} alt={product.name} style={{ width: "100%", height: "100%", objectFit: "contain", mixBlendMode: "darken" }} />
           ) : (
-            <div style={{ fontSize: 40, opacity: 0.1 }}>📦</div>
+            <div style={{ fontSize: 40, opacity: 0.1 }}>Package</div>
           )}
         </div>
 
@@ -41,7 +41,7 @@ export default function ProductsTab({
           <div style={{ fontSize: 11, color: "#6b7280", fontWeight: 600 }}>{product.unit}</div>
           
           <div style={{ marginTop: "auto", paddingTop: 10, display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-            <div style={{ fontSize: 15, fontWeight: 800, color: "#111827" }}>₹{product.price}</div>
+            <div style={{ fontSize: 15, fontWeight: 800, color: "#111827" }}>Rs.{product.price}</div>
             
             {/* Dynamic Cart Button */}
             {qtyInCart > 0 ? (
@@ -60,7 +60,7 @@ export default function ProductsTab({
           {/* Subscription Action */}
           {product.isSubscribable !== false && (
             <button onClick={() => startSubscription(product)} style={{ marginTop: 8, width: "100%", background: "#fff", border: "1px solid #e5e7eb", color: "#374151", padding: "8px", borderRadius: 8, fontSize: 11, fontWeight: 700, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", gap: 6 }}>
-              <span>📅</span> Subscribe
+              <span>Date</span> Subscribe
             </button>
           )}
         </div>
@@ -74,7 +74,7 @@ export default function ProductsTab({
   return (
     <div style={{ paddingBottom: 60 }}>
       
-      {/* 🎟️ HORIZONTAL BANNERS CAROUSEL (Only visible on 'All Items') */}
+      {/* Ticket HORIZONTAL BANNERS CAROUSEL (Only visible on 'All Items') */}
       {selectedCategory === "all" && banners.length > 0 && (
         <div style={{ display: "flex", overflowX: "auto", padding: "16px", gap: 12, scrollbarWidth: "none", WebkitOverflowScrolling: "touch" }}>
           {banners.map(b => (
@@ -83,7 +83,7 @@ export default function ProductsTab({
         </div>
       )}
 
-      {/* 🏷️ STICKY CATEGORY PILLS */}
+      {/* Tag STICKY CATEGORY PILLS */}
       <div style={{ position: "sticky", top: 0, background: "rgba(255, 255, 255, 0.95)", backdropFilter: "blur(8px)", zIndex: 40, display: "flex", overflowX: "auto", padding: "12px 16px", gap: 10, scrollbarWidth: "none", borderBottom: "1px solid #e5e7eb", boxShadow: "0 4px 6px -1px rgba(0, 0, 0, 0.05)" }}>
         <button 
           onClick={() => setSelectedCategory("all")}
@@ -119,7 +119,7 @@ export default function ProductsTab({
                     <h2 style={{ fontSize: 18, fontWeight: 800, color: "#111827", margin: 0 }}>{cat.name}</h2>
                     {catProducts.length > 4 && (
                       <button onClick={() => setSelectedCategory(cat.id)} style={{ background: "none", border: "none", color: "#2563eb", fontWeight: 700, fontSize: 13, cursor: "pointer", display: "flex", alignItems: "center", gap: 4 }}>
-                        See All <span>➔</span>
+                        See All <span>{"->"}</span>
                       </button>
                     )}
                   </div>
@@ -142,7 +142,7 @@ export default function ProductsTab({
             {/* Empty Category Fallback */}
             {products.filter(p => p.categoryId === selectedCategory).length === 0 && (
               <div style={{ gridColumn: "1 / span 2", padding: 40, textAlign: "center", color: "#6b7280" }}>
-                <div style={{ fontSize: 40, marginBottom: 12 }}>🛒</div>
+                <div style={{ fontSize: 40, marginBottom: 12 }}>Cart</div>
                 <div style={{ fontWeight: 600, fontSize: 16 }}>No items in this category yet</div>
               </div>
             )}

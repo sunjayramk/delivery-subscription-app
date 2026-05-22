@@ -173,7 +173,7 @@ export default function DailyManifest() {
             onClick={() => window.print()}
             style={{ background: "#111827", color: "#fff", border: "none", padding: "10px 16px", borderRadius: 8, fontWeight: 700, cursor: "pointer", display: "flex", gap: 8, alignItems: "center" }}
           >
-            🖨️ Print Manifest
+            Print Manifest
           </button>
         </div>
       </div>
@@ -181,7 +181,7 @@ export default function DailyManifest() {
       {/* SECTION 1: PROCUREMENT TOTALS */}
       <div style={{ marginBottom: 32 }}>
         <h2 style={{ fontSize: 18, color: "#111827", marginBottom: 16, display: "flex", alignItems: "center", gap: 8 }}>
-          <span>📦</span> Warehouse Totals
+          <span>Package</span> Warehouse Totals
         </h2>
         {Object.keys(manifestData.productTotals).length === 0 ? (
           <div style={{ background: "#f9fafb", padding: 24, borderRadius: 12, border: "1px dashed #d1d5db", textAlign: "center", color: "#6b7280" }}>
@@ -204,7 +204,7 @@ export default function DailyManifest() {
       {/* SECTION 2: CUSTOMER PACKING LIST */}
       <div>
         <h2 style={{ fontSize: 18, color: "#111827", marginBottom: 16, display: "flex", alignItems: "center", gap: 8 }}>
-          <span>🚚</span> Route Packing List
+          <span>Delivery</span> Route Packing List
         </h2>
         
         <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
@@ -214,7 +214,7 @@ export default function DailyManifest() {
               <div style={{ flex: 1 }}>
                 <div style={{ fontWeight: 700, color: "#111827", fontSize: 15 }}>{delivery.customerName}</div>
                 <div style={{ color: "#6b7280", fontSize: 13, marginTop: 4, display: "flex", alignItems: "center", gap: 4 }}>
-                  <span>📍</span> {delivery.address}
+                  <span>Location</span> {delivery.address}
                 </div>
               </div>
 

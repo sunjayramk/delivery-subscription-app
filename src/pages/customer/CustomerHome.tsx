@@ -110,7 +110,7 @@ function formatSchedule(sub: Subscription): string {
   switch (sub.scheduleType) {
     case "daily": return "Daily";
     case "alternate_days": return "Alternate days";
-    case "mon_fri": return "Mon–Fri";
+    case "mon_fri": return "Mon-Fri";
     case "weekends": return "Weekends";
     case "custom":
       if (!sub.scheduleDays || sub.scheduleDays.length === 0) return "Custom days";
@@ -220,7 +220,7 @@ export default function CustomerHome() {
         } else {
           const userData = userDoc.data();
           
-          // 🌟 THE FIX: Actually check the flag!
+          // * THE FIX: Actually check the flag!
           if (userData.isOnboarded === false) {
             // It's a new user who hasn't finished the wizard!
             setNeedsOnboarding(true);
@@ -531,7 +531,7 @@ export default function CustomerHome() {
       await Promise.all(promises);
       await reloadSubscriptionsForCustomer();
       setVacationFrom(""); setVacationTo("");
-      showToast("🌴 Vacation mode activated successfully!");
+      showToast("Area Vacation mode activated successfully!");
     } catch(err) { showToast("Failed to set vacation.", "error"); } finally { setSavingVacation(false); }
   }
 
@@ -651,7 +651,7 @@ export default function CustomerHome() {
       await addDoc(collection(db, "tenants", user.tenantId, "orders"), {
         tenantId: user.tenantId, customerId: user.uid, customerName: user.name || "Customer", items: orderItems, totalAmount: cartTotal, status: "pending", type: "one-time", shift: checkoutShift, date: new Date().toISOString().split('T')[0], createdAt: serverTimestamp(), deliveryAddress: { label: selectedAddress.label, line1: selectedAddress.line1, area: selectedAddress.area || "", city: selectedAddress.city || "", pincode: selectedAddress.pincode || "", phone: selectedAddress.phone || "", mapUrl: selectedAddress.mapUrl || "" }
       });
-      setCart({}); showToast("🎉 Order placed successfully!"); setActiveTab("orders");
+      setCart({}); showToast("Success Order placed successfully!"); setActiveTab("orders");
     } catch (error) { showToast("Failed to place order. Please try again.", "error"); } finally { setIsCheckingOut(false); }
   };
 
@@ -676,17 +676,17 @@ export default function CustomerHome() {
           <div>
             <div style={{ fontSize: 11, color: "#6b7280", fontWeight: 600, textTransform: "uppercase", letterSpacing: 0.5 }}>{storeName}</div>
             <div style={{ fontSize: 14, fontWeight: 700, color: "#111827", display: "flex", alignItems: "center", gap: 4 }}>
-              {user?.name || "Customer"} <span style={{ fontSize: 10, color: "#2563eb" }}>▼</span>
+              {user?.name || "Customer"} <span style={{ fontSize: 10, color: "#2563eb" }}>v</span>
             </div>
           </div>
           
           {/* UPDATED WALLET PILL */}
           <div onClick={() => setActiveTab("wallet")} style={{ background: walletBalance > 0 ? "#fef2f2" : walletBalance < 0 ? "#dcfce7" : "#eff6ff", padding: "6px 12px", borderRadius: 16, fontSize: 13, fontWeight: 800, color: walletBalance > 0 ? "#dc2626" : walletBalance < 0 ? "#16a34a" : "#2563eb", border: walletBalance > 0 ? "1px solid #fecaca" : walletBalance < 0 ? "1px solid #bbf7d0" : "1px solid #bfdbfe", cursor: "pointer", boxShadow: "0 2px 4px rgba(0,0,0,0.02)" }}>
             {walletBalance > 0 
-              ? `-₹${walletBalance.toFixed(2)} Due` 
+              ? `-Rs.${walletBalance.toFixed(2)} Due` 
               : walletBalance < 0 
-                ? `₹${Math.abs(walletBalance).toFixed(2)} Cr` 
-                : `₹0.00`}
+                ? `Rs.${Math.abs(walletBalance).toFixed(2)} Cr` 
+                : `Rs.0.00`}
           </div>
           
         </div>
@@ -701,8 +701,8 @@ export default function CustomerHome() {
               {cartItemsCount > 0 && (
                 <div style={{ position: "fixed", bottom: 80, left: 0, right: 0, margin: "0 auto", maxWidth: 448, padding: "0 16px", zIndex: 50 }}>
                   <div onClick={() => setActiveTab("cart")} style={{ background: "#2563eb", color: "#fff", borderRadius: 12, padding: "14px 16px", display: "flex", justifyContent: "space-between", alignItems: "center", boxShadow: "0 4px 12px rgba(37, 99, 235, 0.3)", cursor: "pointer" }}>
-                    <div style={{ display: "flex", flexDirection: "column" }}><span style={{ fontSize: 12, opacity: 0.9, fontWeight: 500 }}>{cartItemsCount} ITEMS</span><span style={{ fontSize: 16, fontWeight: 700 }}>₹{cartTotal}</span></div>
-                    <div style={{ display: "flex", alignItems: "center", gap: 8, fontWeight: 700, fontSize: 15 }}>View Cart <span>➔</span></div>
+                    <div style={{ display: "flex", flexDirection: "column" }}><span style={{ fontSize: 12, opacity: 0.9, fontWeight: 500 }}>{cartItemsCount} ITEMS</span><span style={{ fontSize: 16, fontWeight: 700 }}>Rs.{cartTotal}</span></div>
+                    <div style={{ display: "flex", alignItems: "center", gap: 8, fontWeight: 700, fontSize: 15 }}>View Cart <span>{"->"}</span></div>
                   </div>
                 </div>
               )}
@@ -710,8 +710,8 @@ export default function CustomerHome() {
               {subProduct && (
                 <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.5)", zIndex: 100, display: "flex", alignItems: "flex-end", justifyContent: "center" }}>
                    <section id="sub-form" style={{ width: "100%", maxWidth: 480, padding: 24, borderRadius: "24px 24px 0 0", background: "#fff", maxHeight: "85vh", overflowY: "auto", boxShadow: "0 -10px 40px rgba(0,0,0,0.2)" }}>
-                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}><h2 style={{ margin: 0, fontSize: 20 }}>Subscribe</h2><button onClick={() => setSubProduct(null)} style={{ background: "#f3f4f6", border: "none", borderRadius: "50%", width: 32, height: 32, fontSize: 16, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", color: "#4b5563" }}>✕</button></div>
-                    <div style={{ background: "#eff6ff", padding: 12, borderRadius: 12, marginBottom: 16 }}><p style={{ margin: 0, color: "#1e3a8a", fontWeight: 600 }}>{subProduct.name} <span style={{ fontWeight: 400 }}>({subProduct.unit})</span></p><p style={{ margin: "4px 0 0 0", color: "#2563eb", fontWeight: 700, fontSize: 16 }}>₹{subProduct.price}</p></div>
+                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}><h2 style={{ margin: 0, fontSize: 20 }}>Subscribe</h2><button onClick={() => setSubProduct(null)} style={{ background: "#f3f4f6", border: "none", borderRadius: "50%", width: 32, height: 32, fontSize: 16, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", color: "#4b5563" }}>x</button></div>
+                    <div style={{ background: "#eff6ff", padding: 12, borderRadius: 12, marginBottom: 16 }}><p style={{ margin: 0, color: "#1e3a8a", fontWeight: 600 }}>{subProduct.name} <span style={{ fontWeight: 400 }}>({subProduct.unit})</span></p><p style={{ margin: "4px 0 0 0", color: "#2563eb", fontWeight: 700, fontSize: 16 }}>Rs.{subProduct.price}</p></div>
 
                     <form onSubmit={handleCreateSubscription} style={{ display: "flex", flexDirection: "column", gap: 16 }}>
                       <div style={{ display: "flex", gap: 12 }}>
@@ -759,8 +759,8 @@ export default function CustomerHome() {
                           <div style={{ background: "#fef2f2", color: "#dc2626", padding: 12, borderRadius: 8, fontSize: 13, fontWeight: 500 }}>Please add an address in your Profile first.</div>
                         ) : (
                           <select style={{ width: "100%", padding: 10, borderRadius: 8, border: "1px solid #d1d5db", background: "#fff" }} value={subAddressId} onChange={(e) => setSubAddressId(e.target.value)}>
-                            <option value="">— Select an address —</option>
-                            {addresses.map((a) => <option key={a.id} value={a.id}>{a.label} – {a.line1}</option>)}
+                            <option value="">- Select an address -</option>
+                            {addresses.map((a) => <option key={a.id} value={a.id}>{a.label} - {a.line1}</option>)}
                           </select>
                         )}
                       </div>
@@ -782,8 +782,8 @@ export default function CustomerHome() {
             <div style={{ display: "flex", flexDirection: "column" }}>
               <div style={{ padding: "16px 16px 0 16px" }}>
                 <div style={{ display: "flex", background: "#f3f4f6", borderRadius: 12, padding: 4, border: "1px solid #e5e7eb" }}>
-                  <button onClick={() => setSubscribeView("calendar")} style={{ flex: 1, padding: "8px 0", borderRadius: 8, border: "none", background: subscribeView === "calendar" ? "#fff" : "transparent", color: subscribeView === "calendar" ? "#111827" : "#6b7280", fontWeight: 700, fontSize: 13, cursor: "pointer", boxShadow: subscribeView === "calendar" ? "0 2px 4px rgba(0,0,0,0.05)" : "none", transition: "all 0.2s" }}>📅 Calendar</button>
-                  <button onClick={() => setSubscribeView("plans")} style={{ flex: 1, padding: "8px 0", borderRadius: 8, border: "none", background: subscribeView === "plans" ? "#fff" : "transparent", color: subscribeView === "plans" ? "#111827" : "#6b7280", fontWeight: 700, fontSize: 13, cursor: "pointer", boxShadow: subscribeView === "plans" ? "0 2px 4px rgba(0,0,0,0.05)" : "none", transition: "all 0.2s" }}>⚙️ Manage Plans</button>
+                  <button onClick={() => setSubscribeView("calendar")} style={{ flex: 1, padding: "8px 0", borderRadius: 8, border: "none", background: subscribeView === "calendar" ? "#fff" : "transparent", color: subscribeView === "calendar" ? "#111827" : "#6b7280", fontWeight: 700, fontSize: 13, cursor: "pointer", boxShadow: subscribeView === "calendar" ? "0 2px 4px rgba(0,0,0,0.05)" : "none", transition: "all 0.2s" }}>Date Calendar</button>
+                  <button onClick={() => setSubscribeView("plans")} style={{ flex: 1, padding: "8px 0", borderRadius: 8, border: "none", background: subscribeView === "plans" ? "#fff" : "transparent", color: subscribeView === "plans" ? "#111827" : "#6b7280", fontWeight: 700, fontSize: 13, cursor: "pointer", boxShadow: subscribeView === "plans" ? "0 2px 4px rgba(0,0,0,0.05)" : "none", transition: "all 0.2s" }}>Settings Manage Plans</button>
                 </div>
               </div>
               <div>
@@ -832,10 +832,10 @@ export default function CustomerHome() {
 
         {/* STICKY BOTTOM NAVIGATION */}
         <div style={{ background: "#fff", display: "flex", justifyContent: "space-around", alignItems: "center", padding: "12px 0", paddingBottom: "calc(12px + env(safe-area-inset-bottom))", position: "fixed", bottom: 0, width: "100%", maxWidth: 480, borderTop: "1px solid #e5e7eb", zIndex: 10 }}>
-          <NavItem icon="🏪" label="Shop" isActive={activeTab === "products" || activeTab === "dashboard" || activeTab === "cart"} onClick={() => setActiveTab("products")} />
-          <NavItem icon="📅" label="Subscribe" isActive={activeTab === "subscriptions"} onClick={() => setActiveTab("subscriptions")} />
-          <NavItem icon="💰" label="Wallet" isActive={activeTab === "wallet"} onClick={() => setActiveTab("wallet")} />
-          <NavItem icon="👤" label="Profile" isActive={activeTab === "profile"} onClick={() => setActiveTab("profile")} />
+          <NavItem icon="Store" label="Shop" isActive={activeTab === "products" || activeTab === "dashboard" || activeTab === "cart"} onClick={() => setActiveTab("products")} />
+          <NavItem icon="Date" label="Subscribe" isActive={activeTab === "subscriptions"} onClick={() => setActiveTab("subscriptions")} />
+          <NavItem icon="$" label="Wallet" isActive={activeTab === "wallet"} onClick={() => setActiveTab("wallet")} />
+          <NavItem icon="User" label="Profile" isActive={activeTab === "profile"} onClick={() => setActiveTab("profile")} />
         </div>
 
       </div>
@@ -843,7 +843,7 @@ export default function CustomerHome() {
   );
 }
 
-// 🧩 Helper Component for Bottom Nav
+// Module Helper Component for Bottom Nav
 function NavItem({ icon, label, isActive, onClick }: { icon: string, label: string, isActive: boolean, onClick: () => void }) {
   return (
     <div onClick={onClick} style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 4, cursor: "pointer", width: "25%", transition: "all 0.2s" }}>

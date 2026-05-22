@@ -139,7 +139,7 @@ export default function AgentDashboard() {
   const pendingOrders = filteredOrders.filter(o => o.status === "pending");
   const completedOrders = filteredOrders.filter(o => o.status === "delivered" || o.status === "not_delivered");
 
-  // ✅ NEW: Sort orders so pending are at the top, completed at the bottom
+  // NEW: Sort orders so pending are at the top, completed at the bottom
   const sortedRouteOrders = useMemo(() => {
     return [...filteredOrders].sort((a, b) => {
       if (a.status === "pending" && b.status !== "pending") return -1;
@@ -171,7 +171,7 @@ export default function AgentDashboard() {
         finalPodUrl = await getDownloadURL(fileRef);
       }
 
-      // ✅ FIX: Added (order.items || []) so it doesn't crash on old test orders
+      // FIX: Added (order.items || []) so it doesn't crash on old test orders
       const finalItems = (order.items || []).map((it: any, idx: number) => {
         const editedQty = editedQuantities[order.id]?.[idx];
         return editedQty !== undefined ? { ...it, qty: editedQty } : it;
@@ -185,7 +185,7 @@ export default function AgentDashboard() {
           await setDoc(doc(db, "tenants", user.tenantId!, "customerAccounts", `${user.tenantId}_${order.customerId}`), { outstandingDue: increment(total), updatedAt: serverTimestamp() }, { merge: true });
         }
         
-        // ✅ FIX: Build the update object safely to prevent 'undefined' crashes
+        // FIX: Build the update object safely to prevent 'undefined' crashes
         const updateData: any = { 
           status, 
           items: finalItems, 
@@ -205,7 +205,7 @@ export default function AgentDashboard() {
       setAllOrders(prev => prev.map(o => o.id === order.id ? { ...o, status, items: finalItems, podUrl: finalPodUrl || order.podUrl } : o));
       setToastMessage(status === "delivered" ? "Delivered!" : "Marked as Skipped.");
     } catch (err: any) { 
-      // ✅ FIX: Log the actual error to the console so we can debug it!
+      // FIX: Log the actual error to the console so we can debug it!
       console.error("UPDATE ORDER ERROR:", err);
       setToastMessage(err.message || "Failed to update."); 
     } finally { 
@@ -236,7 +236,7 @@ export default function AgentDashboard() {
             </div>
           </div>
 
-          {/* 📅 TIME MACHINE SLIDER */}
+          {/* Date TIME MACHINE SLIDER */}
           <div style={{ display: "flex", gap: 8, overflowX: "auto", paddingBottom: 8, scrollbarWidth: "none" }}>
             {availableDates.map(d => {
               const isToday = d === todayStr;
@@ -254,7 +254,7 @@ export default function AgentDashboard() {
         {/* PAST DATE WARNING */}
         {isPastDate && (
           <div style={{ background: "#fef2f2", color: "#991b1b", padding: 10, textAlign: "center", fontSize: 12, fontWeight: 700, borderBottom: "1px solid #fecaca" }}>
-            ⚠️ Viewing History (Read-Only Mode)
+            ! Viewing History (Read-Only Mode)
           </div>
         )}
 
@@ -267,7 +267,7 @@ export default function AgentDashboard() {
               {/* FILTERS */}
               <div style={{ display: "flex", gap: 8 }}>
                 <select value={selectedShift} onChange={e => setSelectedShift(e.target.value as any)} style={{ flex: 1, padding: "10px", borderRadius: 10, border: "1px solid #d1d5db", fontSize: 13, fontWeight: 600, background: "#fff" }}>
-                  <option value="All">All Shifts</option><option value="Morning">🌅 Morning</option><option value="Evening">🌙 Evening</option>
+                  <option value="All">All Shifts</option><option value="Morning">Morning Morning</option><option value="Evening">Evening Evening</option>
                 </select>
                 {uniqueRoutes.length > 1 && (
                   <select value={selectedRoute} onChange={e => setSelectedRoute(e.target.value)} style={{ flex: 1, padding: "10px", borderRadius: 10, border: "1px solid #d1d5db", fontSize: 13, fontWeight: 600, background: "#fff" }}>
@@ -279,7 +279,7 @@ export default function AgentDashboard() {
 
               {sortedRouteOrders.length === 0 ? (
                 <div style={{ textAlign: "center", padding: 40, color: "#6b7280" }}>
-                  <div style={{ fontSize: 40, marginBottom: 12 }}>🏁</div>
+                  <div style={{ fontSize: 40, marginBottom: 12 }}>Finish</div>
                   <div style={{ fontSize: 16, fontWeight: 700, color: "#111827" }}>Queue Empty</div>
                 </div>
               ) : (
@@ -295,12 +295,12 @@ export default function AgentDashboard() {
                             <span style={{ background: isCompleted ? "#9ca3af" : "#111827", color: "#fff", width: 24, height: 24, borderRadius: "50%", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 12, fontWeight: 800 }}>{idx + 1}</span>
                             <span style={{ fontSize: 16, fontWeight: 800, color: "#111827", textDecoration: isCompleted ? "line-through" : "none" }}>{order.customerName || "Customer"}</span>
                           </div>
-                          <div style={{ fontSize: 13, color: "#4b5563", paddingLeft: 32 }}>📍 {formatAddress(order.deliveryAddress)}</div>
+                          <div style={{ fontSize: 13, color: "#4b5563", paddingLeft: 32 }}>Location {formatAddress(order.deliveryAddress)}</div>
                         </div>
                         
                         {/* Permission: Calling */}
                         {agentSettings.allowRiderCalling && order.deliveryAddress?.phone && !isCompleted && !isPastDate && (
-                          <button onClick={() => window.open(`tel:${order.deliveryAddress?.phone}`)} style={{ background: "#eff6ff", color: "#2563eb", border: "none", width: 36, height: 36, borderRadius: "50%", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 16, cursor: "pointer" }}>📞</button>
+                          <button onClick={() => window.open(`tel:${order.deliveryAddress?.phone}`)} style={{ background: "#eff6ff", color: "#2563eb", border: "none", width: 36, height: 36, borderRadius: "50%", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 16, cursor: "pointer" }}>Phone</button>
                         )}
                       </div>
 
@@ -336,15 +336,15 @@ export default function AgentDashboard() {
                           <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
                             <input type="file" accept="image/*" capture="environment" id={`pod-${order.id}`} style={{ display: "none" }} onChange={(e) => { if (e.target.files?.[0]) setPodFiles(prev => ({ ...prev, [order.id]: e.target.files![0] })); }} />
                             <label htmlFor={`pod-${order.id}`} style={{ flex: 1, textAlign: "center", padding: "8px 0", borderRadius: 8, fontSize: 12, fontWeight: 700, cursor: "pointer", background: podFiles[order.id] ? "#dcfce7" : "#f1f5f9", color: podFiles[order.id] ? "#16a34a" : "#475569", border: `1px solid ${podFiles[order.id] ? "#bbf7d0" : "#e2e8f0"}` }}>
-                              {podFiles[order.id] ? "📸 Photo Ready!" : "📸 Snap Door Photo"}
+                              {podFiles[order.id] ? "Photo Photo Ready!" : "Photo Snap Door Photo"}
                             </label>
                           </div>
                           <div style={{ display: "flex", gap: 8 }}>
                             {agentSettings.agentCanMarkNonDelivery && (
-                              <button disabled={updatingId === order.id} onClick={() => void updateOrderStatus(order, "not_delivered")} style={{ flex: 1, padding: "12px 0", borderRadius: 12, border: "1px solid #d1d5db", background: "#fff", color: "#dc2626", fontWeight: 700, fontSize: 14 }}>❌ Skip</button>
+                              <button disabled={updatingId === order.id} onClick={() => void updateOrderStatus(order, "not_delivered")} style={{ flex: 1, padding: "12px 0", borderRadius: 12, border: "1px solid #d1d5db", background: "#fff", color: "#dc2626", fontWeight: 700, fontSize: 14 }}>Skip</button>
                             )}
                             <button disabled={updatingId === order.id} onClick={() => void updateOrderStatus(order, "delivered")} style={{ flex: 2, padding: "12px 0", borderRadius: 12, border: "none", background: "#16a34a", color: "#fff", fontWeight: 800, fontSize: 15, boxShadow: "0 4px 10px rgba(22,163,74,0.3)" }}>
-                              {updatingId === order.id ? "Saving..." : "✓ Delivered"}
+                              {updatingId === order.id ? "Saving..." : "OK Delivered"}
                             </button>
                           </div>
                         </div>
@@ -353,7 +353,7 @@ export default function AgentDashboard() {
                       {/* Read-Only Status Tag for Completed Orders */}
                       {isCompleted && (
                         <div style={{ padding: 12, background: order.status === "delivered" ? "#dcfce7" : "#fee2e2", textAlign: "center", fontSize: 13, fontWeight: 700, color: order.status === "delivered" ? "#166534" : "#991b1b" }}>
-                          {order.status === "delivered" ? "✅ Successfully Delivered" : "❌ Skipped"}
+                          {order.status === "delivered" ? "Successfully Delivered" : "Skipped"}
                         </div>
                       )}
 
@@ -372,9 +372,9 @@ export default function AgentDashboard() {
                   <div key={o.id} style={{ background: o.status === "delivered" ? "#f0fdf4" : "#fef2f2", border: `1px solid ${o.status === "delivered" ? "#bbf7d0" : "#fecaca"}`, padding: 12, borderRadius: 12, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
                     <div>
                       <div style={{ fontWeight: 600, color: o.status === "delivered" ? "#166534" : "#991b1b", fontSize: 14 }}>{o.customerName}</div>
-                      {o.podUrl && <a href={o.podUrl} target="_blank" rel="noreferrer" style={{ fontSize: 11, color: "#2563eb", marginTop: 4, display: "inline-block" }}>🖼️ View Photo</a>}
+                      {o.podUrl && <a href={o.podUrl} target="_blank" rel="noreferrer" style={{ fontSize: 11, color: "#2563eb", marginTop: 4, display: "inline-block" }}>Image View Photo</a>}
                     </div>
-                    <div style={{ fontSize: 12, color: o.status === "delivered" ? "#15803d" : "#dc2626", fontWeight: 700 }}>{o.status === "delivered" ? "✓ Done" : "❌ Skipped"}</div>
+                    <div style={{ fontSize: 12, color: o.status === "delivered" ? "#15803d" : "#dc2626", fontWeight: 700 }}>{o.status === "delivered" ? "OK Done" : "Skipped"}</div>
                   </div>
                 ))}
             </div>
@@ -388,9 +388,9 @@ export default function AgentDashboard() {
 
         {/* BOTTOM NAVIGATION */}
         <div style={{ position: "absolute", bottom: 0, left: 0, right: 0, background: "#fff", borderTop: "1px solid #e5e7eb", display: "flex", padding: "8px 16px 20px 16px", justifyContent: "space-between", zIndex: 40 }}>
-          <button onClick={() => setActiveTab("route")} style={{ flex: 1, background: "none", border: "none", display: "flex", flexDirection: "column", alignItems: "center", gap: 4, color: activeTab === "route" ? "#2563eb" : "#9ca3af" }}><span style={{ fontSize: 20 }}>📍</span><span style={{ fontSize: 10, fontWeight: 700 }}>Route</span></button>
-          <button onClick={() => setActiveTab("summary")} style={{ flex: 1, background: "none", border: "none", display: "flex", flexDirection: "column", alignItems: "center", gap: 4, color: activeTab === "summary" ? "#2563eb" : "#9ca3af" }}><span style={{ fontSize: 20 }}>📊</span><span style={{ fontSize: 10, fontWeight: 700 }}>Summary</span></button>
-          <button onClick={() => setActiveTab("profile")} style={{ flex: 1, background: "none", border: "none", display: "flex", flexDirection: "column", alignItems: "center", gap: 4, color: activeTab === "profile" ? "#2563eb" : "#9ca3af" }}><span style={{ fontSize: 20 }}>👤</span><span style={{ fontSize: 10, fontWeight: 700 }}>Profile</span></button>
+          <button onClick={() => setActiveTab("route")} style={{ flex: 1, background: "none", border: "none", display: "flex", flexDirection: "column", alignItems: "center", gap: 4, color: activeTab === "route" ? "#2563eb" : "#9ca3af" }}><span style={{ fontSize: 20 }}>Location</span><span style={{ fontSize: 10, fontWeight: 700 }}>Route</span></button>
+          <button onClick={() => setActiveTab("summary")} style={{ flex: 1, background: "none", border: "none", display: "flex", flexDirection: "column", alignItems: "center", gap: 4, color: activeTab === "summary" ? "#2563eb" : "#9ca3af" }}><span style={{ fontSize: 20 }}>Stats</span><span style={{ fontSize: 10, fontWeight: 700 }}>Summary</span></button>
+          <button onClick={() => setActiveTab("profile")} style={{ flex: 1, background: "none", border: "none", display: "flex", flexDirection: "column", alignItems: "center", gap: 4, color: activeTab === "profile" ? "#2563eb" : "#9ca3af" }}><span style={{ fontSize: 20 }}>User</span><span style={{ fontSize: 10, fontWeight: 700 }}>Profile</span></button>
         </div>
       </div>
     </div>

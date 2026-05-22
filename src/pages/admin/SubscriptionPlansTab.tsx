@@ -88,7 +88,7 @@ export default function SubscriptionPlansTab() {
       
       // Reset Form
       setPlanName(""); setDefaultQty(1); setDiscountPct(0); setPlanType("ongoing");
-      alert("✅ Subscription Plan Created!");
+      alert("Subscription Plan Created!");
     } catch (err) {
       alert("Failed to create plan.");
     } finally {
@@ -108,7 +108,7 @@ export default function SubscriptionPlansTab() {
     <div style={{ maxWidth: 1200, margin: "0 auto", padding: "24px 16px" }}>
       
       <div style={{ marginBottom: 24 }}>
-        <h1 style={{ margin: "0 0 8px 0", fontSize: 24, color: "#111827" }}>📅 Subscription Plans</h1>
+        <h1 style={{ margin: "0 0 8px 0", fontSize: 24, color: "#111827" }}>Date Subscription Plans</h1>
         <p style={{ margin: 0, color: "#6b7280", fontSize: 14 }}>Create structured plans to lock in recurring revenue.</p>
       </div>
 
@@ -116,7 +116,7 @@ export default function SubscriptionPlansTab() {
         
         {/* BUILDER FORM */}
         <div style={{ flex: "1 1 350px", background: "#fff", borderRadius: 16, border: "1px solid #e5e7eb", padding: 24, boxShadow: "0 4px 6px -1px rgba(0,0,0,0.05)" }}>
-          <h2 style={{ margin: "0 0 20px 0", fontSize: 18, color: "#111827", display: "flex", alignItems: "center", gap: 8 }}>✨ Create New Plan</h2>
+          <h2 style={{ margin: "0 0 20px 0", fontSize: 18, color: "#111827", display: "flex", alignItems: "center", gap: 8 }}> Create New Plan</h2>
           
           <form onSubmit={handleCreatePlan} style={{ display: "flex", flexDirection: "column", gap: 16 }}>
             <div>
@@ -128,7 +128,7 @@ export default function SubscriptionPlansTab() {
               <div style={{ flex: 2 }}>
                 <label style={{ display: "block", fontSize: 13, fontWeight: 600, color: "#4b5563", marginBottom: 4 }}>Linked Product</label>
                 <select value={productId} onChange={e => setProductId(e.target.value)} style={{ width: "100%", padding: 10, borderRadius: 8, border: "1px solid #d1d5db", fontSize: 14, background: "#fff" }}>
-                  {products.map(p => <option key={p.id} value={p.id}>{p.name} (₹{p.price})</option>)}
+                  {products.map(p => <option key={p.id} value={p.id}>{p.name} (Rs.{p.price})</option>)}
                 </select>
               </div>
               <div style={{ flex: 1 }}>
@@ -184,7 +184,7 @@ export default function SubscriptionPlansTab() {
         <div style={{ flex: "1 1 400px", display: "flex", flexDirection: "column", gap: 16 }}>
           {plans.length === 0 ? (
             <div style={{ padding: 40, textAlign: "center", background: "#fff", borderRadius: 16, border: "1px dashed #d1d5db", color: "#6b7280" }}>
-              <div style={{ fontSize: 32, marginBottom: 8 }}>🏷️</div>
+              <div style={{ fontSize: 32, marginBottom: 8 }}>Tag</div>
               No subscription plans created yet.
             </div>
           ) : (
@@ -193,7 +193,7 @@ export default function SubscriptionPlansTab() {
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 12 }}>
                   <div>
                     <h3 style={{ margin: 0, fontSize: 16, color: "#111827" }}>{plan.name}</h3>
-                    <div style={{ fontSize: 13, color: "#6b7280", marginTop: 4 }}>📦 {plan.defaultQty}x {plan.productName}</div>
+                    <div style={{ fontSize: 13, color: "#6b7280", marginTop: 4 }}>Package {plan.defaultQty}x {plan.productName}</div>
                   </div>
                   <button onClick={() => togglePlanStatus(plan.id, plan.isActive)} style={{ padding: "4px 12px", background: plan.isActive ? "#fee2e2" : "#dcfce7", color: plan.isActive ? "#dc2626" : "#16a34a", border: "none", borderRadius: 20, fontSize: 11, fontWeight: 700, cursor: "pointer" }}>
                     {plan.isActive ? "Deactivate" : "Activate"}
@@ -202,16 +202,16 @@ export default function SubscriptionPlansTab() {
 
                 <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
                   <span style={{ background: "#f3f4f6", padding: "4px 10px", borderRadius: 6, fontSize: 12, fontWeight: 600, color: "#4b5563" }}>
-                    ⏳ {plan.planType === "fixed" ? `${plan.durationDays} Days` : "Ongoing"}
+                    Loading {plan.planType === "fixed" ? `${plan.durationDays} Days` : "Ongoing"}
                   </span>
                   {plan.planType === "fixed" && plan.autoRenew && (
-                    <span style={{ background: "#eff6ff", padding: "4px 10px", borderRadius: 6, fontSize: 12, fontWeight: 600, color: "#2563eb" }}>🔄 Auto-Renews</span>
+                    <span style={{ background: "#eff6ff", padding: "4px 10px", borderRadius: 6, fontSize: 12, fontWeight: 600, color: "#2563eb" }}>Refresh Auto-Renews</span>
                   )}
                   {plan.discountPct > 0 && (
-                    <span style={{ background: "#fefce8", padding: "4px 10px", borderRadius: 6, fontSize: 12, fontWeight: 600, color: "#ca8a04" }}>🏷️ {plan.discountPct}% OFF</span>
+                    <span style={{ background: "#fefce8", padding: "4px 10px", borderRadius: 6, fontSize: 12, fontWeight: 600, color: "#ca8a04" }}>Tag {plan.discountPct}% OFF</span>
                   )}
                   {plan.deliveryType === "free" && (
-                    <span style={{ background: "#f0fdf4", padding: "4px 10px", borderRadius: 6, fontSize: 12, fontWeight: 600, color: "#16a34a" }}>🚚 Free Delivery</span>
+                    <span style={{ background: "#f0fdf4", padding: "4px 10px", borderRadius: 6, fontSize: 12, fontWeight: 600, color: "#16a34a" }}>Delivery Free Delivery</span>
                   )}
                 </div>
               </div>

@@ -101,7 +101,7 @@ export default function TeamTab() {
       
       setNewName(""); setNewEmail(""); setNewPhone(""); setNewPassword(""); setNewRole("agent");
       setShowAddModal(false);
-      alert("✅ Team member added successfully!");
+      alert("Team member added successfully!");
     } catch (err: any) {
       alert("Error: " + err.message);
     } finally {
@@ -109,7 +109,7 @@ export default function TeamTab() {
     }
   }
 
-  // ✅ NEW: Update an existing member's role
+  // NEW: Update an existing member's role
   async function handleUpdateRole(e: React.FormEvent) {
     e.preventDefault();
     if (!editMember) return;
@@ -145,7 +145,7 @@ export default function TeamTab() {
 
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 24 }}>
         <div>
-          <h1 style={{ margin: "0 0 8px 0", fontSize: 24, color: "#111827" }}>🛡️ Team & Access Control</h1>
+          <h1 style={{ margin: "0 0 8px 0", fontSize: 24, color: "#111827" }}>Shield Team & Access Control</h1>
           <p style={{ margin: 0, color: "#6b7280", fontSize: 14 }}>Manage agents and internal staff permissions.</p>
         </div>
         <button onClick={() => setShowAddModal(true)} style={{ padding: "8px 16px", background: "#111827", color: "#fff", border: "none", borderRadius: 8, fontWeight: 600, cursor: "pointer", display: "flex", alignItems: "center", gap: 8 }}>
@@ -192,7 +192,7 @@ export default function TeamTab() {
                       </span>
                     </td>
                     <td style={{ padding: "12px 16px", textAlign: "center" }}>
-                      {/* ✅ EDIT BUTTON ADDED */}
+                      {/* EDIT BUTTON ADDED */}
                       <button onClick={() => { setEditMember(t); setEditRole(ROLES[t.role] ? t.role : "admin"); }} style={{ background: "#eff6ff", color: "#2563eb", border: "none", padding: "6px 12px", borderRadius: 6, cursor: "pointer", fontSize: 11, fontWeight: 700, marginRight: 8 }}>
                         Edit Role
                       </button>
@@ -211,25 +211,25 @@ export default function TeamTab() {
         </table>
       </div>
 
-      {/* ✅ EDIT ROLE MODAL */}
+      {/* EDIT ROLE MODAL */}
       {editMember && (
         <div style={{ position: "fixed", inset: 0, zIndex: 9999, display: "flex", alignItems: "center", justifyContent: "center" }}>
           <div onClick={() => !isAdding && setEditMember(null)} style={{ position: "absolute", inset: 0, background: "rgba(17, 24, 39, 0.4)", backdropFilter: "blur(2px)" }}></div>
           <div style={{ position: "relative", width: 400, maxWidth: "90%", background: "#fff", borderRadius: 16, padding: 24, boxShadow: "0 20px 25px -5px rgba(0, 0, 0, 0.1)", animation: "fadeIn 0.2s ease-out" }}>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 20 }}>
               <h2 style={{ margin: 0, fontSize: 18, color: "#111827" }}>Edit Role: {editMember.name}</h2>
-              <button onClick={() => !isAdding && setEditMember(null)} style={{ background: "transparent", border: "none", fontSize: 20, cursor: "pointer", color: "#9ca3af" }}>✕</button>
+              <button onClick={() => !isAdding && setEditMember(null)} style={{ background: "transparent", border: "none", fontSize: 20, cursor: "pointer", color: "#9ca3af" }}>x</button>
             </div>
             <form onSubmit={handleUpdateRole}>
               <div style={{ background: "#f8fafc", padding: 16, borderRadius: 8, border: "1px solid #e2e8f0" }}>
                 <label style={{ display: "block", fontSize: 13, fontWeight: 700, color: "#111827", marginBottom: 8 }}>Assign Security Role</label>
                 <select value={editRole} onChange={e => setEditRole(e.target.value)} style={{ width: "100%", padding: 12, borderRadius: 8, border: "1px solid #cbd5e1", fontSize: 14, background: "#fff", fontWeight: 600 }}>
-                  <option value="admin">⭐ Super Admin (Full Access)</option>
-                  <option value="agent">🛵 Delivery Agent (Rider App Only)</option>
-                  <option value="view_only">👁️ View Only (No Edits)</option>
-                  <option value="delivery_manager">📦 Delivery Manager (Routes & Dispatch)</option>
-                  <option value="account_manager">💰 Account Manager (Billing & Wallets)</option>
-                  <option value="data_manager">📊 Data Manager (Products & Plans)</option>
+                  <option value="admin">* Super Admin (Full Access)</option>
+                  <option value="agent">Delivery Delivery Agent (Rider App Only)</option>
+                  <option value="view_only">View View Only (No Edits)</option>
+                  <option value="delivery_manager">Package Delivery Manager (Routes & Dispatch)</option>
+                  <option value="account_manager">$ Account Manager (Billing & Wallets)</option>
+                  <option value="data_manager">Stats Data Manager (Products & Plans)</option>
                 </select>
                 <div style={{ fontSize: 12, color: "#6b7280", marginTop: 8 }}>
                   {ROLES[editRole]?.desc || ROLES["admin"].desc}
@@ -251,7 +251,7 @@ export default function TeamTab() {
           <div style={{ position: "relative", width: 450, maxWidth: "90%", background: "#fff", borderRadius: 16, padding: 24, boxShadow: "0 20px 25px -5px rgba(0, 0, 0, 0.1)", animation: "fadeIn 0.2s ease-out" }}>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 20 }}>
               <h2 style={{ margin: 0, fontSize: 18, color: "#111827" }}>Create App User</h2>
-              <button onClick={() => !isAdding && setShowAddModal(false)} style={{ background: "transparent", border: "none", fontSize: 20, cursor: "pointer", color: "#9ca3af" }}>✕</button>
+              <button onClick={() => !isAdding && setShowAddModal(false)} style={{ background: "transparent", border: "none", fontSize: 20, cursor: "pointer", color: "#9ca3af" }}>x</button>
             </div>
             
             <form onSubmit={handleAddMember} style={{ display: "flex", flexDirection: "column", gap: 16 }}>
@@ -266,12 +266,12 @@ export default function TeamTab() {
               <div style={{ background: "#f8fafc", padding: 16, borderRadius: 8, border: "1px solid #e2e8f0" }}>
                 <label style={{ display: "block", fontSize: 13, fontWeight: 700, color: "#111827", marginBottom: 8 }}>Assign Security Role</label>
                 <select value={newRole} onChange={e => setNewRole(e.target.value)} style={{ width: "100%", padding: 12, borderRadius: 8, border: "1px solid #cbd5e1", fontSize: 14, background: "#fff", fontWeight: 600 }}>
-                  <option value="agent">🛵 Delivery Agent (Rider App Only)</option>
-                  <option value="view_only">👁️ View Only (No Edits)</option>
-                  <option value="delivery_manager">📦 Delivery Manager (Routes & Dispatch)</option>
-                  <option value="account_manager">💰 Account Manager (Billing & Wallets)</option>
-                  <option value="data_manager">📊 Data Manager (Products & Plans)</option>
-                  <option value="admin">⭐ Super Admin</option>
+                  <option value="agent">Delivery Delivery Agent (Rider App Only)</option>
+                  <option value="view_only">View View Only (No Edits)</option>
+                  <option value="delivery_manager">Package Delivery Manager (Routes & Dispatch)</option>
+                  <option value="account_manager">$ Account Manager (Billing & Wallets)</option>
+                  <option value="data_manager">Stats Data Manager (Products & Plans)</option>
+                  <option value="admin">* Super Admin</option>
                 </select>
                 <div style={{ fontSize: 12, color: "#6b7280", marginTop: 8 }}>
                   {ROLES[newRole]?.desc || ROLES["admin"].desc}

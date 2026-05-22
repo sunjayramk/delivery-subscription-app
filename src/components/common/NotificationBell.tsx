@@ -97,7 +97,7 @@ export default function NotificationBell() {
           cursor: "pointer",
         }}
       >
-        🔔
+        Alert
         {unreadCount > 0 && (
           <span
             style={{

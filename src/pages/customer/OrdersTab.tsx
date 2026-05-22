@@ -23,7 +23,7 @@ interface Order {
   status: string;
   items: OrderItem[];
   deliveryAddress?: DeliveryAddress;
-  shift?: string; // ✅ ADDED: The new Morning/Evening shift!
+  shift?: string; // ADDED: The new Morning/Evening shift!
 }
 
 interface Props {
@@ -48,9 +48,9 @@ function getStatusStyle(status: string): React.CSSProperties {
 
 function getStatusLabel(status: string): string {
   switch (status.toLowerCase()) {
-    case "delivered": return "✅ Delivered";
-    case "pending": return "⏳ Order Placed";
-    case "not_delivered": return "❌ Cancelled";
+    case "delivered": return "Delivered";
+    case "pending": return "Loading Order Placed";
+    case "not_delivered": return "Cancelled";
     default: return status;
   }
 }
@@ -116,7 +116,7 @@ export default function OrdersTab({
         <p style={{ color: "red", textAlign: "center" }}>{errorOrders}</p>
       ) : sortedOrders.length === 0 ? (
         <div style={{ padding: 40, borderRadius: 16, background: "#f9fafb", textAlign: "center", color: "#6b7280", border: "1px dashed #d1d5db" }}>
-          <div style={{ fontSize: 40, marginBottom: 12 }}>🛍️</div>
+          <div style={{ fontSize: 40, marginBottom: 12 }}>Shopping</div>
           <p style={{ margin: 0, fontWeight: 500 }}>
             {filterFrom || filterTo ? "No orders found for these dates." : "You haven't placed any orders yet."}
           </p>
@@ -145,10 +145,10 @@ export default function OrdersTab({
                   </span>
                 </div>
 
-                {/* ✅ NEW: Shift Delivery Badge */}
+                {/* NEW: Shift Delivery Badge */}
                 {o.shift && (
                   <div style={{ display: "inline-flex", alignItems: "center", gap: 6, background: "#f3f4f6", padding: "6px 12px", borderRadius: 8, fontSize: 12, fontWeight: 600, color: "#374151", marginBottom: 12 }}>
-                    {o.shift === "Morning" ? "🌅" : "🌙"} 
+                    {o.shift === "Morning" ? "Morning" : "Evening"} 
                     {o.shift} Delivery
                   </div>
                 )}
@@ -161,7 +161,7 @@ export default function OrdersTab({
                         <span style={{fontWeight: 600, color: "#111827"}}>{it.qty}x</span> {it.name} ({it.unit})
                       </span>
                       <span style={{ fontWeight: 600, color: "#111827" }}>
-                        ₹{(it.price * it.qty).toFixed(2)}
+                        Rs.{(it.price * it.qty).toFixed(2)}
                       </span>
                     </div>
                   ))}
@@ -170,12 +170,12 @@ export default function OrdersTab({
                 {/* Total & Address */}
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-end" }}>
                   <div style={{ fontSize: 12, color: "#6b7280", maxWidth: "60%" }}>
-                    <span style={{display: "block", marginBottom: 2}}>📍 Delivery to:</span>
+                    <span style={{display: "block", marginBottom: 2}}>Location Delivery to:</span>
                     {formatAddress(o.deliveryAddress) || "Default Address"}
                   </div>
                   <div style={{ textAlign: "right" }}>
                     <div style={{ fontSize: 11, color: "#6b7280", marginBottom: 2 }}>Total Paid</div>
-                    <div style={{ fontWeight: 800, fontSize: 18, color: "#111827" }}>₹{total.toFixed(2)}</div>
+                    <div style={{ fontWeight: 800, fontSize: 18, color: "#111827" }}>Rs.{total.toFixed(2)}</div>
                   </div>
                 </div>
 

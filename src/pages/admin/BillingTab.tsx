@@ -31,7 +31,7 @@ interface BillingTabProps {
   customers: any[];
   invoices: any[];
   loadingInvoices: boolean;
-  // ✅ NEW PROPS FOR OUR 3 NEW BUTTONS
+  // NEW PROPS FOR OUR 3 NEW BUTTONS
   handlePrintInvoice: (inv: any) => void;
   handleWhatsAppInvoice: (inv: any) => void;
   handlePayInvoice: (inv: any) => void;
@@ -54,7 +54,7 @@ export default function BillingTab({
   setInvCustomerId, setInvYear, setInvMonth, setInvDeliveryCharge,
   handleRecordPayment, handleGenerateInvoice, formatCustomerLabel,
   handleWhatsAppReminder, customers, invoices, loadingInvoices,
-  handlePrintInvoice, handleWhatsAppInvoice, handlePayInvoice // ✅ Destructure them here
+  handlePrintInvoice, handleWhatsAppInvoice, handlePayInvoice // Destructure them here
 }: BillingTabProps) {
 
   const inputStyle: React.CSSProperties = { padding: "8px", borderRadius: "6px", border: "1px solid #ccc", width: "100%", boxSizing: "border-box" };
@@ -73,20 +73,20 @@ export default function BillingTab({
       
       {/* --- Section 1: Record Payment & Outstanding Table --- */}
       <div style={cardStyle}>
-        <h3 style={{ marginTop: 0, display: "flex", alignItems: "center", gap: "8px" }}>💰 Customer Billing</h3>
+        <h3 style={{ marginTop: 0, display: "flex", alignItems: "center", gap: "8px" }}>$ Customer Billing</h3>
         <h4 style={{ margin: "16px 0 8px" }}>Record Payment</h4>
         <form onSubmit={handleRecordPayment} style={{ display: "flex", gap: "12px", alignItems: "flex-end", flexWrap: "wrap", marginBottom: "20px" }}>
           <div style={{ display: "flex", flexDirection: "column", flex: 2, minWidth: "200px" }}>
             <label style={labelStyle}>Customer</label>
             <select value={paymentCustomerId} onChange={(e) => setPaymentCustomerId(e.target.value)} style={inputStyle}>
-              <option value="">— Select Customer —</option>
+              <option value="">- Select Customer -</option>
               {customers.map((c) => (
                 <option key={c.id} value={c.id}>{c.name} {c.phone ? `(${c.phone})` : ""}</option>
               ))}
             </select>
           </div>
           <div style={{ display: "flex", flexDirection: "column", flex: 1, minWidth: "120px" }}>
-            <label style={labelStyle}>Amount (₹)</label>
+            <label style={labelStyle}>Amount (Rs.)</label>
             <input type="number" placeholder="e.g. 500" value={paymentAmount} onChange={(e) => setPaymentAmount(e.target.value)} style={inputStyle} />
           </div>
           <div style={{ display: "flex", flexDirection: "column", flex: 2, minWidth: "150px" }}>
@@ -103,7 +103,7 @@ export default function BillingTab({
             <thead>
               <tr>
                 <th style={thStyle}>Customer</th>
-                <th style={{ ...thStyle, textAlign: "right" }}>Outstanding (₹)</th>
+                <th style={{ ...thStyle, textAlign: "right" }}>Outstanding (Rs.)</th>
                 <th style={{ ...thStyle, textAlign: "center" }}>Action</th>
               </tr>
             </thead>
@@ -119,12 +119,12 @@ export default function BillingTab({
                   <tr key={acc.id}>
                     <td style={tdStyle}>{formatCustomerLabel(acc.customerId)}</td>
                     <td style={{ ...tdStyle, textAlign: "right", color: acc.outstandingDue > 0 ? "#dc2626" : "#16a34a", fontWeight: 500 }}>
-                      ₹{acc.outstandingDue?.toFixed(2) || "0.00"}
+                      Rs.{acc.outstandingDue?.toFixed(2) || "0.00"}
                     </td>
                     <td style={{ ...tdStyle, textAlign: "center" }}>
                       {acc.outstandingDue > 0 && (
                         <button onClick={() => handleWhatsAppReminder(acc.customerId, acc.outstandingDue)} style={{ background: "#fff", border: "1px solid #22c55e", color: "#22c55e", padding: "4px 12px", borderRadius: "16px", cursor: "pointer", fontSize: "12px", display: "inline-flex", alignItems: "center", gap: "4px" }}>
-                          💬 WhatsApp
+                          WhatsApp
                         </button>
                       )}
                     </td>
@@ -143,7 +143,7 @@ export default function BillingTab({
           <div style={{ display: "flex", flexDirection: "column", flex: 2, minWidth: "180px" }}>
             <label style={labelStyle}>Customer</label>
             <select value={invCustomerId} onChange={(e) => setInvCustomerId(e.target.value)} style={inputStyle}>
-              <option value="">— Select Customer —</option>
+              <option value="">- Select Customer -</option>
               {customers.map((c) => (
                 <option key={c.id} value={c.id}>{c.name}</option>
               ))}
@@ -162,7 +162,7 @@ export default function BillingTab({
             </select>
           </div>
           <div style={{ display: "flex", flexDirection: "column", flex: 1, minWidth: "120px" }}>
-            <label style={labelStyle}>Delivery Fee (₹)</label>
+            <label style={labelStyle}>Delivery Fee (Rs.)</label>
             <input type="number" placeholder="e.g. 50" value={invDeliveryCharge} onChange={(e) => setInvDeliveryCharge(e.target.value)} style={inputStyle} />
           </div>
           <button type="submit" disabled={invSaving} style={{ padding: "9px 20px", borderRadius: "6px", border: "none", background: "#3b82f6", color: "#fff", cursor: "pointer", fontWeight: 500, height: "35px" }}>
@@ -197,11 +197,11 @@ export default function BillingTab({
                     <td style={tdStyle}>{inv.createdAt?.toLocaleDateString() || "N/A"}</td>
                     <td style={tdStyle}>{formatCustomerLabel(inv.customerId)}</td>
                     <td style={tdStyle}>{MONTHS.find(m => m.value === String(inv.periodMonth))?.label} {inv.periodYear}</td>
-                    <td style={{ ...tdStyle, textAlign: "right", fontWeight: "bold" }}>₹{inv.closingBalance}</td>
+                    <td style={{ ...tdStyle, textAlign: "right", fontWeight: "bold" }}>Rs.{inv.closingBalance}</td>
                     <td style={{ ...tdStyle, textAlign: "center", minWidth: "200px" }}>
-                      <button onClick={() => handlePrintInvoice(inv)} style={actionBtnStyle}>🖨️ Print</button>
-                      <button onClick={() => handleWhatsAppInvoice(inv)} style={{...actionBtnStyle, color: "#16a34a", borderColor: "#16a34a"}}>💬 WA</button>
-                      <button onClick={() => handlePayInvoice(inv)} style={{...actionBtnStyle, background: "#111827", color: "#fff", borderColor: "#111827"}}>💳 Pay</button>
+                      <button onClick={() => handlePrintInvoice(inv)} style={actionBtnStyle}>Print</button>
+                      <button onClick={() => handleWhatsAppInvoice(inv)} style={{...actionBtnStyle, color: "#16a34a", borderColor: "#16a34a"}}>WA</button>
+                      <button onClick={() => handlePayInvoice(inv)} style={{...actionBtnStyle, background: "#111827", color: "#fff", borderColor: "#111827"}}>Pay</button>
                     </td>
                   </tr>
                 ))}

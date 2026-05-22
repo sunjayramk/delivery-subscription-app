@@ -69,7 +69,7 @@ export default function PlatformDashboard() {
         const data = tDoc.data() as any;
         const tenantId = tDoc.id;
 
-        // ✅ NEW LOGIC: Fast, cheap server-side counting
+        // NEW LOGIC: Fast, cheap server-side counting
         const ordersQuery = query(collection(db, "tenants", tenantId, "orders"));
         const ordersCountSnap = await getCountFromServer(ordersQuery);
 
@@ -286,7 +286,7 @@ export default function PlatformDashboard() {
                   <tr key={t.id}>
                     <td style={{ padding: 8 }}>{t.name}</td>
                     <td style={{ padding: 8 }}>{t.code}</td>
-                    <td style={{ padding: 8 }}>{t.city || "—"}</td>
+                    <td style={{ padding: 8 }}>{t.city || "-"}</td>
                     <td style={{ padding: 8, textAlign: "right" }}>
                       {t.totalCustomers}
                     </td>

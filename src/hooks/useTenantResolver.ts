@@ -13,13 +13,13 @@ export function useTenantResolver() {
         const hostname = window.location.hostname; // e.g., "anssuta.yourdomain.com"
         let searchSlug = "";
 
-        // 🛠️ DEV MODE HACK: If you are testing locally on localhost, 
+        // Tools DEV MODE HACK: If you are testing locally on localhost, 
         // read the URL like this instead: http://localhost:5173/?store=anssuta
         if (hostname === "localhost" || hostname === "127.0.0.1") {
           const urlParams = new URLSearchParams(window.location.search);
           searchSlug = urlParams.get("store") || "anssuta01"; // fallback for local testing
         } else {
-          // 🌍 PRODUCTION MODE: Extract the first part of the subdomain
+          // World PRODUCTION MODE: Extract the first part of the subdomain
           // e.g., "anssuta.mystore.com" -> "anssuta"
           searchSlug = hostname.split(".")[0]; 
         }

@@ -106,7 +106,7 @@ export default function CustomerAuth({ tenantId, tenantName, onSuccess }: Custom
               value={password} 
               onChange={(e) => setPassword(e.target.value)} 
               style={{ width: "100%", padding: 12, borderRadius: 8, border: "1px solid #d1d5db" }} 
-              placeholder="••••••••"
+              placeholder="||||||||"
             />
           </div>
 

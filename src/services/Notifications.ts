@@ -19,7 +19,7 @@ export async function createNotification(params: {
   const { tenantId, userId, type, title, message } = params;
 
   try {
-    // ✅ Fix 1: Check notification count and limit to 100 per user
+    // Fix 1: Check notification count and limit to 100 per user
     const existingQ = query(
       collection(db, "tenants", tenantId, "notifications"),
       where("userId", "==", userId),
@@ -31,7 +31,7 @@ export async function createNotification(params: {
       return;
     }
 
-    // ✅ Fix 2: Save under tenant subcollection
+    // Fix 2: Save under tenant subcollection
     await addDoc(collection(db, "tenants", tenantId, "notifications"), {
       tenantId,
       userId,
@@ -43,7 +43,7 @@ export async function createNotification(params: {
     });
 
   } catch (err) {
-    // ✅ Fix 3: Proper error handling
+    // Fix 3: Proper error handling
     console.error("Failed to create notification:", err);
     throw err;
   }

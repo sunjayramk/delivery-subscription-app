@@ -37,14 +37,14 @@ export default function Settings() {
   const [distanceBaseFee, setDistanceBaseFee] = useState<number>(20);
   const [distancePerKmFee, setDistancePerKmFee] = useState<number>(5);
 
-  // ✅ NEW: AGENT & FIELD CONTROLS
+  // NEW: AGENT & FIELD CONTROLS
   const [agentCanEditQty, setAgentCanEditQty] = useState(false);
   const [agentCanMarkNonDelivery, setAgentCanMarkNonDelivery] = useState(true);
   const [agentCanCollectCash, setAgentCanCollectCash] = useState(true);
   const [showRiderDetails, setShowRiderDetails] = useState(true);
   const [allowRiderCalling, setAllowRiderCalling] = useState(true);
 
-  // ✅ NEW: DELIVERY INSTRUCTIONS & NOTIFICATIONS
+  // NEW: DELIVERY INSTRUCTIONS & NOTIFICATIONS
   const [allowCustomInstructions, setAllowCustomInstructions] = useState(true);
   const [notifyEmail, setNotifyEmail] = useState(true);
   const [notifyPush, setNotifyPush] = useState(true);
@@ -101,7 +101,7 @@ export default function Settings() {
         notifyEmail, notifyPush, notifyWhatsapp,
         updatedAt: serverTimestamp()
       }, { merge: true });
-      alert("✅ Enterprise settings successfully saved!");
+      alert("Enterprise settings successfully saved!");
     } catch (err) { alert("Failed to save settings."); } 
     finally { setSaving(false); }
   }
@@ -122,7 +122,7 @@ export default function Settings() {
       
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 24 }}>
         <div>
-          <h1 style={{ margin: "0 0 8px 0", fontSize: 24, color: "#111827" }}>⚙️ Global Settings</h1>
+          <h1 style={{ margin: "0 0 8px 0", fontSize: 24, color: "#111827" }}>Settings Global Settings</h1>
           <p style={{ margin: 0, color: "#6b7280", fontSize: 14 }}>Configure your storefront, financial rules, pricing, and agent permissions.</p>
         </div>
         <button onClick={handleSaveSettings} disabled={saving} style={{ padding: "10px 24px", background: "#111827", color: "#fff", border: "none", borderRadius: 8, fontWeight: 700, cursor: saving ? "not-allowed" : "pointer", opacity: saving ? 0.7 : 1 }}>
@@ -134,7 +134,7 @@ export default function Settings() {
         
         {/* ROW 1: CORE BRANDING & FINANCE */}
         <div style={{ background: "#fff", padding: 24, borderRadius: 16, border: "1px solid #e5e7eb", boxShadow: "0 2px 10px rgba(0,0,0,0.02)" }}>
-          <h3 style={{ margin: "0 0 20px 0", fontSize: 16, color: "#111827", display: "flex", alignItems: "center", gap: 8 }}>🎨 Storefront Branding</h3>
+          <h3 style={{ margin: "0 0 20px 0", fontSize: 16, color: "#111827", display: "flex", alignItems: "center", gap: 8 }}>Theme Storefront Branding</h3>
           <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
             <div><label style={{ display: "block", fontSize: 12, fontWeight: 600, color: "#6b7280", marginBottom: 6 }}>Store Name</label><input type="text" value={storeName} onChange={e => setStoreName(e.target.value)} style={{ width: "100%", padding: 10, borderRadius: 8, border: "1px solid #d1d5db", fontSize: 14 }} /></div>
             <div><label style={{ display: "block", fontSize: 12, fontWeight: 600, color: "#6b7280", marginBottom: 6 }}>Logo Image URL</label><input type="text" value={logoUrl} onChange={e => setLogoUrl(e.target.value)} style={{ width: "100%", padding: 10, borderRadius: 8, border: "1px solid #d1d5db", fontSize: 14 }} /></div>
@@ -146,17 +146,17 @@ export default function Settings() {
         </div>
 
         <div style={{ background: "#fff", padding: 24, borderRadius: 16, border: "1px solid #e5e7eb", boxShadow: "0 2px 10px rgba(0,0,0,0.02)" }}>
-          <h3 style={{ margin: "0 0 20px 0", fontSize: 16, color: "#111827", display: "flex", alignItems: "center", gap: 8 }}>💰 Financial Guardrails</h3>
+          <h3 style={{ margin: "0 0 20px 0", fontSize: 16, color: "#111827", display: "flex", alignItems: "center", gap: 8 }}>$ Financial Guardrails</h3>
           <ToggleSwitch label="Allow Customer Credit" checked={allowCredit} onChange={setAllowCredit} />
           <div style={{ display: "flex", gap: 16, marginTop: 20, opacity: allowCredit ? 1 : 0.5, pointerEvents: allowCredit ? "auto" : "none" }}>
-            <div style={{ flex: 1 }}><label style={{ display: "block", fontSize: 12, fontWeight: 600, color: "#ca8a04", marginBottom: 6 }}>⚠️ Warning Limit (₹)</label><input type="number" value={warningLimit} onChange={e => setWarningLimit(Number(e.target.value))} style={{ width: "100%", padding: 10, borderRadius: 8, border: "1px solid #fef08a", background: "#fefce8", fontSize: 14 }} /></div>
-            <div style={{ flex: 1 }}><label style={{ display: "block", fontSize: 12, fontWeight: 600, color: "#dc2626", marginBottom: 6 }}>🚫 Suspension Limit (₹)</label><input type="number" value={suspensionLimit} onChange={e => setSuspensionLimit(Number(e.target.value))} style={{ width: "100%", padding: 10, borderRadius: 8, border: "1px solid #fecaca", background: "#fef2f2", fontSize: 14 }} /></div>
+            <div style={{ flex: 1 }}><label style={{ display: "block", fontSize: 12, fontWeight: 600, color: "#ca8a04", marginBottom: 6 }}>! Warning Limit (Rs.)</label><input type="number" value={warningLimit} onChange={e => setWarningLimit(Number(e.target.value))} style={{ width: "100%", padding: 10, borderRadius: 8, border: "1px solid #fef08a", background: "#fefce8", fontSize: 14 }} /></div>
+            <div style={{ flex: 1 }}><label style={{ display: "block", fontSize: 12, fontWeight: 600, color: "#dc2626", marginBottom: 6 }}>Blocked Suspension Limit (Rs.)</label><input type="number" value={suspensionLimit} onChange={e => setSuspensionLimit(Number(e.target.value))} style={{ width: "100%", padding: 10, borderRadius: 8, border: "1px solid #fecaca", background: "#fef2f2", fontSize: 14 }} /></div>
           </div>
         </div>
 
-        {/* ✅ ROW 2: NEW FIELD CONTROLS & NOTIFICATIONS */}
+        {/* ROW 2: NEW FIELD CONTROLS & NOTIFICATIONS */}
         <div style={{ background: "#fff", padding: 24, borderRadius: 16, border: "1px solid #e5e7eb", boxShadow: "0 2px 10px rgba(0,0,0,0.02)" }}>
-          <h3 style={{ margin: "0 0 16px 0", fontSize: 16, color: "#111827", display: "flex", alignItems: "center", gap: 8 }}>🛵 Agent Permissions</h3>
+          <h3 style={{ margin: "0 0 16px 0", fontSize: 16, color: "#111827", display: "flex", alignItems: "center", gap: 8 }}>Delivery Agent Permissions</h3>
           <p style={{ fontSize: 12, color: "#6b7280", marginTop: -8, marginBottom: 16 }}>Control what delivery boys can do in their app.</p>
           <div style={{ display: "flex", flexDirection: "column" }}>
             <ToggleSwitch label="Allow agents to Edit Qty at door" checked={agentCanEditQty} onChange={setAgentCanEditQty} danger />
@@ -169,7 +169,7 @@ export default function Settings() {
         </div>
 
         <div style={{ background: "#fff", padding: 24, borderRadius: 16, border: "1px solid #e5e7eb", boxShadow: "0 2px 10px rgba(0,0,0,0.02)" }}>
-          <h3 style={{ margin: "0 0 16px 0", fontSize: 16, color: "#111827", display: "flex", alignItems: "center", gap: 8 }}>🔔 Notifications & Checkout</h3>
+          <h3 style={{ margin: "0 0 16px 0", fontSize: 16, color: "#111827", display: "flex", alignItems: "center", gap: 8 }}>Alert Notifications & Checkout</h3>
           <p style={{ fontSize: 12, color: "#6b7280", marginTop: -8, marginBottom: 16 }}>Control how customers interact and get alerted.</p>
           <div style={{ display: "flex", flexDirection: "column" }}>
             <ToggleSwitch label="Enable Email Notifications" checked={notifyEmail} onChange={setNotifyEmail} />
@@ -183,7 +183,7 @@ export default function Settings() {
 
         {/* ROW 3: DELIVERY PRICING (From Phase 3) */}
         <div style={{ background: "#f0fdf4", padding: 24, borderRadius: 16, border: "1px solid #bbf7d0", boxShadow: "0 2px 10px rgba(0,0,0,0.02)" }}>
-          <h3 style={{ margin: "0 0 16px 0", fontSize: 16, color: "#166534", display: "flex", alignItems: "center", gap: 8 }}>📅 Subscription Delivery Fees</h3>
+          <h3 style={{ margin: "0 0 16px 0", fontSize: 16, color: "#166534", display: "flex", alignItems: "center", gap: 8 }}>Date Subscription Delivery Fees</h3>
           <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
             <div>
               <label style={{ display: "block", fontSize: 12, fontWeight: 700, color: "#166534", marginBottom: 6 }}>Fee Structure</label>
@@ -195,13 +195,13 @@ export default function Settings() {
               </select>
             </div>
             {subChargeType !== "free" && (
-              <div><label style={{ display: "block", fontSize: 12, fontWeight: 700, color: "#166534", marginBottom: 6 }}>Charge Amount (₹)</label><input type="number" value={subChargeAmount} onChange={e => setSubChargeAmount(Number(e.target.value))} style={{ width: "100%", padding: 10, borderRadius: 8, border: "1px solid #86efac", fontSize: 14 }} /></div>
+              <div><label style={{ display: "block", fontSize: 12, fontWeight: 700, color: "#166534", marginBottom: 6 }}>Charge Amount (Rs.)</label><input type="number" value={subChargeAmount} onChange={e => setSubChargeAmount(Number(e.target.value))} style={{ width: "100%", padding: 10, borderRadius: 8, border: "1px solid #86efac", fontSize: 14 }} /></div>
             )}
           </div>
         </div>
 
         <div style={{ background: "#eff6ff", padding: 24, borderRadius: 16, border: "1px solid #bfdbfe", boxShadow: "0 2px 10px rgba(0,0,0,0.02)" }}>
-          <h3 style={{ margin: "0 0 16px 0", fontSize: 16, color: "#1e40af", display: "flex", alignItems: "center", gap: 8 }}>🚀 One-Time Order Fees</h3>
+          <h3 style={{ margin: "0 0 16px 0", fontSize: 16, color: "#1e40af", display: "flex", alignItems: "center", gap: 8 }}>Launch One-Time Order Fees</h3>
           <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
             <div>
               <label style={{ display: "block", fontSize: 12, fontWeight: 700, color: "#1e40af", marginBottom: 6 }}>Fee Structure</label>
@@ -210,7 +210,7 @@ export default function Settings() {
               </select>
             </div>
             {oneTimeChargeType === "flat" && (
-              <div><label style={{ display: "block", fontSize: 12, fontWeight: 700, color: "#1e40af", marginBottom: 6 }}>Flat Delivery Fee (₹)</label><input type="number" value={oneTimeFlatFee} onChange={e => setOneTimeFlatFee(Number(e.target.value))} style={{ width: "100%", padding: 10, borderRadius: 8, border: "1px solid #93c5fd", fontSize: 14 }} /></div>
+              <div><label style={{ display: "block", fontSize: 12, fontWeight: 700, color: "#1e40af", marginBottom: 6 }}>Flat Delivery Fee (Rs.)</label><input type="number" value={oneTimeFlatFee} onChange={e => setOneTimeFlatFee(Number(e.target.value))} style={{ width: "100%", padding: 10, borderRadius: 8, border: "1px solid #93c5fd", fontSize: 14 }} /></div>
             )}
           </div>
         </div>

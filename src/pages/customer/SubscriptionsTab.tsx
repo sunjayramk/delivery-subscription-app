@@ -30,10 +30,10 @@ export default function SubscriptionsTab({
   return (
     <div style={{ padding: 16 }}>
       
-      {/* 🌴 THE MASTER VACATION SWITCH */}
+      {/* Area THE MASTER VACATION SWITCH */}
       <div style={{ background: activeVacationSub ? "#f0fdf4" : "#fff", border: activeVacationSub ? "1px solid #bbf7d0" : "1px solid #e5e7eb", borderRadius: 16, padding: 20, boxShadow: "0 2px 8px rgba(0,0,0,0.02)", marginBottom: 24 }}>
         <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 12 }}>
-          <span style={{ fontSize: 24 }}>🌴</span>
+          <span style={{ fontSize: 24 }}>Area</span>
           <div>
             <h3 style={{ margin: 0, fontSize: 16, color: activeVacationSub ? "#166534" : "#111827" }}>Vacation Mode</h3>
             <p style={{ margin: 0, fontSize: 13, color: activeVacationSub ? "#15803d" : "#6b7280" }}>Pause all deliveries while away.</p>
@@ -68,7 +68,7 @@ export default function SubscriptionsTab({
         )}
       </div>
 
-      {/* 🟢 ACTIVE SUBSCRIPTIONS */}
+      {/* Green ACTIVE SUBSCRIPTIONS */}
       <div style={{ marginBottom: 24 }}>
         <h3 style={{ fontSize: 18, color: "#111827", marginBottom: 16 }}>Active Subscriptions</h3>
         {activeSubs.length === 0 ? (
@@ -82,8 +82,8 @@ export default function SubscriptionsTab({
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
                   <div>
                     <h4 style={{ margin: 0, fontSize: 16, color: "#111827" }}>{sub.productName}</h4>
-                    <p style={{ margin: "4px 0 0 0", fontSize: 13, color: "#6b7280" }}>{sub.qty} x {sub.unit} • {formatSchedule(sub)}</p>
-                    <p style={{ margin: "4px 0 0 0", fontSize: 14, fontWeight: 700, color: "#2563eb" }}>₹{sub.price} / delivery</p>
+                    <p style={{ margin: "4px 0 0 0", fontSize: 13, color: "#6b7280" }}>{sub.qty} x {sub.unit} | {formatSchedule(sub)}</p>
+                    <p style={{ margin: "4px 0 0 0", fontSize: 14, fontWeight: 700, color: "#2563eb" }}>Rs.{sub.price} / delivery</p>
                   </div>
                   <button onClick={() => toggleSubscriptionActive(sub)} style={{ background: "#fef2f2", color: "#dc2626", border: "1px solid #fecaca", padding: "6px 12px", borderRadius: 8, fontSize: 12, fontWeight: 700, cursor: "pointer" }}>
                     Pause Plan
@@ -95,7 +95,7 @@ export default function SubscriptionsTab({
         )}
       </div>
 
-      {/* 🔴 PAUSED SUBSCRIPTIONS */}
+      {/* Red PAUSED SUBSCRIPTIONS */}
       {pausedSubs.length > 0 && (
         <div>
           <h3 style={{ fontSize: 18, color: "#111827", marginBottom: 16, opacity: 0.7 }}>Paused Subscriptions</h3>
@@ -105,7 +105,7 @@ export default function SubscriptionsTab({
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
                   <div>
                     <h4 style={{ margin: 0, fontSize: 16, color: "#4b5563" }}>{sub.productName}</h4>
-                    <p style={{ margin: "4px 0 0 0", fontSize: 13, color: "#9ca3af" }}>{sub.qty} x {sub.unit} • {formatSchedule(sub)}</p>
+                    <p style={{ margin: "4px 0 0 0", fontSize: 13, color: "#9ca3af" }}>{sub.qty} x {sub.unit} | {formatSchedule(sub)}</p>
                   </div>
                   <button onClick={() => toggleSubscriptionActive(sub)} style={{ background: "#f0fdf4", color: "#16a34a", border: "1px solid #bbf7d0", padding: "6px 12px", borderRadius: 8, fontSize: 12, fontWeight: 700, cursor: "pointer" }}>
                     Resume Plan

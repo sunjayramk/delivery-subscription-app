@@ -11,7 +11,7 @@ interface Route {
   id: string; 
   zoneId: string; 
   name: string; 
-  // ✅ NEW: Route Pricing Overrides
+  // NEW: Route Pricing Overrides
   hasCustomDeliveryFee?: boolean; 
   customDeliveryFeeAmount?: number; 
 }
@@ -35,7 +35,7 @@ export default function LogisticsTab() {
   const [newRoute, setNewRoute] = useState("");
   const [isSaving, setIsSaving] = useState(false);
 
-  // ✅ NEW: Route Editing Modal State
+  // NEW: Route Editing Modal State
   const [editingRoute, setEditingRoute] = useState<Route | null>(null);
   const [editRouteName, setEditRouteName] = useState("");
   const [editRouteHasFee, setEditRouteHasFee] = useState(false);
@@ -120,7 +120,7 @@ export default function LogisticsTab() {
     } finally { setIsSaving(false); }
   }
 
-  // ✅ NEW: Save Route Overrides
+  // NEW: Save Route Overrides
   async function handleUpdateRoute(e: React.FormEvent) {
     e.preventDefault();
     if (!user?.tenantId || !editingRoute) return;
@@ -158,7 +158,7 @@ export default function LogisticsTab() {
       `}</style>
 
       <div style={{ marginBottom: 24 }}>
-        <h1 style={{ margin: "0 0 8px 0", fontSize: 24, color: "#111827" }}>📍 Network & Logistics</h1>
+        <h1 style={{ margin: "0 0 8px 0", fontSize: 24, color: "#111827" }}>Location Network & Logistics</h1>
         <p style={{ margin: 0, color: "#6b7280", fontSize: 14 }}>Build your delivery hierarchy: Hubs {'>'} Zones {'>'} Routes.</p>
       </div>
 
@@ -175,7 +175,7 @@ export default function LogisticsTab() {
                 onClick={() => setSelectedHub(hub.id)}
                 style={{ padding: "12px 16px", background: selectedHub === hub.id ? "#2563eb" : "#fff", color: selectedHub === hub.id ? "#fff" : "#111827", borderRadius: 8, border: `1px solid ${selectedHub === hub.id ? "#2563eb" : "#d1d5db"}`, cursor: "pointer", fontWeight: selectedHub === hub.id ? 700 : 500, transition: "all 0.2s", boxShadow: selectedHub === hub.id ? "0 4px 12px rgba(37, 99, 235, 0.2)" : "none" }}
               >
-                🏢 {hub.name}
+                {hub.name}
               </div>
             ))}
           </div>
@@ -198,8 +198,8 @@ export default function LogisticsTab() {
                 onClick={() => setSelectedZone(zone.id)}
                 style={{ padding: "12px 16px", background: selectedZone === zone.id ? "#059669" : "#fff", color: selectedZone === zone.id ? "#fff" : "#111827", borderRadius: 8, border: `1px solid ${selectedZone === zone.id ? "#059669" : "#d1d5db"}`, cursor: "pointer", transition: "all 0.2s", boxShadow: selectedZone === zone.id ? "0 4px 12px rgba(5, 150, 105, 0.2)" : "none" }}
               >
-                <div style={{ fontWeight: selectedZone === zone.id ? 700 : 500 }}>🗺️ {zone.name}</div>
-                {zone.pincodes && <div style={{ fontSize: 11, marginTop: 4, opacity: 0.8 }}>📍 Pincodes: {zone.pincodes}</div>}
+                <div style={{ fontWeight: selectedZone === zone.id ? 700 : 500 }}>Map {zone.name}</div>
+                {zone.pincodes && <div style={{ fontSize: 11, marginTop: 4, opacity: 0.8 }}>Location Pincodes: {zone.pincodes}</div>}
               </div>
             ))}
           </div>
@@ -222,12 +222,12 @@ export default function LogisticsTab() {
             {filteredRoutes.map(route => (
               <div key={route.id} style={{ padding: "12px 16px", background: "#fff", color: "#111827", borderRadius: 8, border: "1px solid #d1d5db", display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8 }}>
                 <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                  <span>🚚</span> 
+                  <span>Delivery</span> 
                   <span style={{ fontWeight: 600 }}>{route.name}</span>
                   {/* Show tag if route has a custom price */}
                   {route.hasCustomDeliveryFee && (
                     <span title="Route-wide delivery override" style={{ background: "#fef08a", color: "#854d0e", padding: "2px 6px", borderRadius: 12, fontSize: 10, fontWeight: 700 }}>
-                      ⭐ ₹{route.customDeliveryFeeAmount}
+                      * Rs.{route.customDeliveryFeeAmount}
                     </span>
                   )}
                 </div>
@@ -237,7 +237,7 @@ export default function LogisticsTab() {
                   style={{ background: "#f3f4f6", border: "none", width: 28, height: 28, borderRadius: 14, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 14, transition: "all 0.2s" }}
                   title="Edit Route Settings"
                 >
-                  ⚙️
+                  Settings
                 </button>
               </div>
             ))}
@@ -249,7 +249,7 @@ export default function LogisticsTab() {
         </div>
       </div>
 
-      {/* ✅ ROUTE EDITING MODAL */}
+      {/* ROUTE EDITING MODAL */}
       {editingRoute && (
         <div style={{ position: "fixed", inset: 0, zIndex: 9999, display: "flex", alignItems: "center", justifyContent: "center" }}>
           <div onClick={() => !isSaving && setEditingRoute(null)} style={{ position: "absolute", inset: 0, background: "rgba(17, 24, 39, 0.4)", backdropFilter: "blur(2px)" }}></div>
@@ -257,7 +257,7 @@ export default function LogisticsTab() {
           <div style={{ position: "relative", width: 400, maxWidth: "90%", background: "#fff", borderRadius: 16, padding: 24, boxShadow: "0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04)", animation: "fadeIn 0.2s ease-out" }}>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 20 }}>
               <h2 style={{ margin: 0, fontSize: 18, color: "#111827" }}>Route Settings</h2>
-              <button onClick={() => !isSaving && setEditingRoute(null)} style={{ background: "transparent", border: "none", fontSize: 20, cursor: "pointer", color: "#9ca3af" }}>✕</button>
+              <button onClick={() => !isSaving && setEditingRoute(null)} style={{ background: "transparent", border: "none", fontSize: 20, cursor: "pointer", color: "#9ca3af" }}>x</button>
             </div>
             
             <form onSubmit={handleUpdateRoute} style={{ display: "flex", flexDirection: "column", gap: 16 }}>
@@ -276,7 +276,7 @@ export default function LogisticsTab() {
                 
                 {editRouteHasFee && (
                   <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                    <span style={{ fontSize: 13, fontWeight: 600, color: "#854d0e" }}>Route Flat Fee: ₹</span>
+                    <span style={{ fontSize: 13, fontWeight: 600, color: "#854d0e" }}>Route Flat Fee: Rs.</span>
                     <input type="number" value={editRouteFeeAmount} onChange={e => setEditRouteFeeAmount(Number(e.target.value))} style={{ flex: 1, padding: "8px 12px", borderRadius: 6, border: "1px solid #fde047", background: "#fff", fontSize: 14 }} placeholder="0 for free" />
                   </div>
                 )}

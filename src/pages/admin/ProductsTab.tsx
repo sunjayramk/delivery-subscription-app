@@ -45,7 +45,7 @@ interface ProductsTabProps {
   handleCreateProduct: (e: React.FormEvent) => void;
   handleCreateCategory: (name: string, sortOrder: number) => void; 
   handleUpdateCategory: (id: string, sortOrder: number) => void;   
-  handleReorderCategories: (updates: {id: string, sortOrder: number}[]) => void; // ✅ NEW DND SAVER
+  handleReorderCategories: (updates: {id: string, sortOrder: number}[]) => void; // NEW DND SAVER
   handleUpdateProduct: (id: string, updates: Partial<Product>, newImageFile?: File | null) => void; 
   handleToggleProductActive: (id: string, isActive: boolean) => void;
   handleUploadBanner: (file: File) => void; 
@@ -178,7 +178,7 @@ export default function ProductsTab({
       
       {/* --- BANNERS SECTION --- */}
       <div style={cardStyle}>
-        <h3 style={{ margin: "0 0 16px 0" }}>🖼️ Storefront Banners & Ads</h3>
+        <h3 style={{ margin: "0 0 16px 0" }}>Image Storefront Banners & Ads</h3>
         <div style={{ display: "flex", gap: 12, alignItems: "flex-end", marginBottom: 16 }}>
           <div style={{ display: "flex", flexDirection: "column", flex: 1 }}>
             <label style={{ fontSize: 12, marginBottom: 4, color: "#555" }}>Upload New Banner (Landscape recommended)</label>
@@ -220,7 +220,7 @@ export default function ProductsTab({
       {/* --- DRAG & DROP CATEGORIES SECTION --- */}
       <div style={cardStyle}>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
-          <h3 style={{ margin: 0 }}>📂 Category Sequence</h3>
+          <h3 style={{ margin: 0 }}>Folder Category Sequence</h3>
           <button
             onClick={() => setShowCategoryForm(!showCategoryForm)}
             style={{ padding: "6px 14px", borderRadius: 8, border: "none", background: "#111827", color: "#fff", cursor: "pointer", fontSize: 13 }}
@@ -279,7 +279,7 @@ export default function ProductsTab({
 
       {/* --- PRODUCTS SECTION --- */}
       <div style={cardStyle}>
-        <h3 style={{ margin: "0 0 12px 0" }}>📦 Products</h3>
+        <h3 style={{ margin: "0 0 12px 0" }}>Package Products</h3>
 
 <div style={{ display: "flex", alignItems: "center", gap: 8, flex: 2, minWidth: 200 }}>
             <input 
@@ -303,13 +303,13 @@ export default function ProductsTab({
             <input style={inputStyle} placeholder="e.g. 500ml" value={newUnit} onChange={(e) => setNewUnit(e.target.value)} />
           </div>
           <div style={{ display: "flex", flexDirection: "column", flex: 1, minWidth: 80 }}>
-            <label style={{ fontSize: 12, marginBottom: 4, color: "#555" }}>Price (₹)</label>
+            <label style={{ fontSize: 12, marginBottom: 4, color: "#555" }}>Price (Rs.)</label>
             <input style={inputStyle} type="number" placeholder="e.g. 30" value={newPrice} onChange={(e) => setNewPrice(e.target.value)} />
           </div>
           <div style={{ display: "flex", flexDirection: "column", flex: 2, minWidth: 150 }}>
             <label style={{ fontSize: 12, marginBottom: 4, color: "#555" }}>Category</label>
             <select style={inputStyle} value={newCategory} onChange={(e) => setNewCategory(e.target.value)}>
-              <option value="">— No Category —</option>
+              <option value="">- No Category -</option>
               {localCategories.map((c) => (
                 <option key={c.id} value={c.id}>{c.name}</option>
               ))}
@@ -346,13 +346,13 @@ export default function ProductsTab({
                       <input style={inputStyle} value={editUnit} onChange={(e) => setEditUnit(e.target.value)} />
                     </div>
                     <div style={{ display: "flex", flexDirection: "column", flex: 1 }}>
-                      <label style={{ fontSize: 11, color: "#555", marginBottom: 2 }}>Price (₹)</label>
+                      <label style={{ fontSize: 11, color: "#555", marginBottom: 2 }}>Price (Rs.)</label>
                       <input style={inputStyle} type="number" value={editPrice} onChange={(e) => setEditPrice(e.target.value)} />
                     </div>
                     <div style={{ display: "flex", flexDirection: "column", flex: 2 }}>
                       <label style={{ fontSize: 11, color: "#555", marginBottom: 2 }}>Category</label>
                       <select style={inputStyle} value={editCategory} onChange={(e) => setEditCategory(e.target.value)}>
-                        <option value="">— No Category —</option>
+                        <option value="">- No Category -</option>
                         {localCategories.map((c) => (
                           <option key={c.id} value={c.id}>{c.name}</option>
                         ))}
@@ -386,12 +386,12 @@ export default function ProductsTab({
                       {p.imageUrl ? (
                         <img src={p.imageUrl} alt={p.name} style={{ width: 48, height: 48, borderRadius: 8, objectFit: "cover", border: "1px solid #e5e7eb" }} />
                       ) : (
-                        <div style={{ width: 48, height: 48, borderRadius: 8, background: "#f3f4f6", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 20, border: "1px solid #e5e7eb" }}>📦</div>
+                        <div style={{ width: 48, height: 48, borderRadius: 8, background: "#f3f4f6", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 20, border: "1px solid #e5e7eb" }}>Package</div>
                       )}
                       <div>
                         <span style={{ fontWeight: 600, fontSize: 14 }}>{p.name}</span>
                         <span style={{ marginLeft: 8, fontSize: 13, color: "#666" }}>{p.unit}</span>
-                        <span style={{ marginLeft: 8, fontSize: 13, fontWeight: 500 }}>₹{p.price}</span>
+                        <span style={{ marginLeft: 8, fontSize: 13, fontWeight: 500 }}>Rs.{p.price}</span>
                         {p.categoryId && (
                           <span style={{ marginLeft: 8, fontSize: 12, padding: "2px 8px", borderRadius: 10, background: "#f3f4f6", color: "#374151" }}>
                             {categories.find((c) => c.id === p.categoryId)?.name || ""}
@@ -403,7 +403,7 @@ export default function ProductsTab({
                       <span style={{ padding: "2px 8px", borderRadius: 10, fontSize: 12, background: p.isActive ? "#dcfce7" : "#fee2e2", color: p.isActive ? "#16a34a" : "#dc2626" }}>
                         {p.isActive ? "Active" : "Inactive"}
                       </span>
-                      <button onClick={() => startEdit(p)} style={{ padding: "5px 12px", borderRadius: 8, border: "1px solid #d1d5db", background: "#fff", cursor: "pointer", fontSize: 12 }}>✏️ Edit</button>
+                      <button onClick={() => startEdit(p)} style={{ padding: "5px 12px", borderRadius: 8, border: "1px solid #d1d5db", background: "#fff", cursor: "pointer", fontSize: 12 }}>Edit Edit</button>
                       <button onClick={() => handleToggleProductActive(p.id, p.isActive)} style={{ padding: "5px 12px", borderRadius: 8, border: "none", background: p.isActive ? "#fee2e2" : "#dcfce7", color: p.isActive ? "#dc2626" : "#16a34a", cursor: "pointer", fontSize: 12 }}>
                         {p.isActive ? "Deactivate" : "Activate"}
                       </button>

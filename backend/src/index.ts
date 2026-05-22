@@ -33,11 +33,11 @@ function shouldRunOnDate(
 
 export const generateDailyOrders = onSchedule(
   {
-    schedule: "0 1 * * *", // 🕒 Runs at 1:00 AM IST every night
+    schedule: "0 1 * * *", // Runs at 1:00 AM IST every night
     timeZone: "Asia/Kolkata",
   },
   async () => {
-    console.log("🚀 Running 7-Day subscription order generator");
+    console.log("Launch Running 7-Day subscription order generator");
 
     // 1. Setup 7 Target Dates
     const datesToGenerate: { dateObj: Date; dateStr: string; dayOfWeek: number }[] = [];
@@ -178,7 +178,7 @@ export const generateDailyOrders = onSchedule(
             await batch.commit();
           }
           
-          console.log(`✅ Generated ${totalCount} new orders for tenant: ${tenantId}`);
+          console.log(`Generated ${totalCount} new orders for tenant: ${tenantId}`);
         } else {
           console.log(`No new orders needed for tenant: ${tenantId}`);
         }
@@ -188,6 +188,6 @@ export const generateDailyOrders = onSchedule(
       }
     }
 
-    console.log("🏁 7-Day Order generation complete.");
+    console.log("Finish 7-Day Order generation complete.");
   }
 );

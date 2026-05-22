@@ -200,7 +200,7 @@ export default function Customers() {
       setCustomerTransactions(prev => [{ id: docRef.id, ...transactionData, type: walletAdjType === "credit" ? "credit" : "debit", createdAt: new Date() }, ...prev]);
       
       setWalletAdjAmount(""); setWalletAdjNote("");
-      alert(`Successfully added ₹${amt} ${walletAdjType} to wallet!`);
+      alert(`Successfully added Rs.${amt} ${walletAdjType} to wallet!`);
     } catch(err) { alert("Failed to adjust wallet."); } finally { setIsSaving(false); }
   }
 
@@ -217,7 +217,7 @@ export default function Customers() {
       const newCustomer: Customer = { id: newUserId, name: addName, email: addEmail, phone: addPhone, createdAt: new Date(), walletBalance: 0, routeId: selectedRouteObj?.id || undefined, routeName: addRoute || "Unassigned", status: "Active", hasCustomDeliveryFee: false, customDeliveryFeeAmount: 0 };
       setCustomers([newCustomer, ...customers]);
       setAddName(""); setAddEmail(""); setAddPhone(""); setAddRoute(""); setShowAddModal(false);
-      alert("✅ Customer added successfully!");
+      alert("Customer added successfully!");
     } catch (err) { alert("Failed to add user."); } finally { setIsAdding(false); }
   }
 
@@ -236,8 +236,8 @@ export default function Customers() {
 
       {/* HEADER & TABLE (Unchanged) */}
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 24 }}>
-        <div><h1 style={{ margin: "0 0 8px 0", fontSize: 24, color: "#111827" }}>👥 Customers</h1><p style={{ margin: 0, color: "#6b7280", fontSize: 14 }}>Manage your user base, routes, and financials.</p></div>
-        <div style={{ display: "flex", gap: 12 }}><button style={{ padding: "8px 16px", background: "#16a34a", color: "#fff", border: "none", borderRadius: 8, fontWeight: 600, cursor: "pointer" }}>⬇️ Export CSV</button><button onClick={() => setShowAddModal(true)} style={{ padding: "8px 16px", background: "#2563eb", color: "#fff", border: "none", borderRadius: 8, fontWeight: 600, cursor: "pointer" }}>+ Add User</button></div>
+        <div><h1 style={{ margin: "0 0 8px 0", fontSize: 24, color: "#111827" }}>Team Customers</h1><p style={{ margin: 0, color: "#6b7280", fontSize: 14 }}>Manage your user base, routes, and financials.</p></div>
+        <div style={{ display: "flex", gap: 12 }}><button style={{ padding: "8px 16px", background: "#16a34a", color: "#fff", border: "none", borderRadius: 8, fontWeight: 600, cursor: "pointer" }}>down Export CSV</button><button onClick={() => setShowAddModal(true)} style={{ padding: "8px 16px", background: "#2563eb", color: "#fff", border: "none", borderRadius: 8, fontWeight: 600, cursor: "pointer" }}>+ Add User</button></div>
       </div>
 
       <div style={{ background: "#fff", borderRadius: 12, border: "1px solid #e5e7eb", overflowX: "auto", boxShadow: "0 4px 6px -1px rgba(0, 0, 0, 0.05)" }}>
@@ -260,8 +260,8 @@ export default function Customers() {
               <tr key={c.id} style={{ borderBottom: "1px solid #e5e7eb", background: index % 2 === 0 ? "#fff" : "#f9fafb" }}>
                 <td style={{ padding: "12px 16px", color: "#111827", fontWeight: 500 }}>{c.name}<div style={{ fontSize: 11, color: "#6b7280", marginTop: 2 }}>{c.email}</div></td>
                 <td style={{ padding: "12px 16px", color: "#4b5563" }}>{c.phone}</td>
-                <td style={{ padding: "12px 16px", fontWeight: 700, color: c.walletBalance > 0 ? "#dc2626" : c.walletBalance < 0 ? "#16a34a" : "#4b5563" }}>{c.walletBalance > 0 ? "-" : c.walletBalance < 0 ? "+" : ""}₹{Math.abs(c.walletBalance).toFixed(2)}</td>
-                <td style={{ padding: "12px 16px", color: "#4b5563" }}><div style={{ display: "flex", gap: 8 }}><span style={{ background: c.routeName === "Unassigned" ? "#fef2f2" : "#eff6ff", color: c.routeName === "Unassigned" ? "#dc2626" : "#2563eb", padding: "2px 8px", borderRadius: 12, fontSize: 11, fontWeight: 600 }}>{c.routeName}</span>{c.hasCustomDeliveryFee && <span style={{ background: "#fef08a", color: "#854d0e", padding: "2px 8px", borderRadius: 12, fontSize: 11, fontWeight: 700 }}>⭐</span>}</div></td>
+                <td style={{ padding: "12px 16px", fontWeight: 700, color: c.walletBalance > 0 ? "#dc2626" : c.walletBalance < 0 ? "#16a34a" : "#4b5563" }}>{c.walletBalance > 0 ? "-" : c.walletBalance < 0 ? "+" : ""}Rs.{Math.abs(c.walletBalance).toFixed(2)}</td>
+                <td style={{ padding: "12px 16px", color: "#4b5563" }}><div style={{ display: "flex", gap: 8 }}><span style={{ background: c.routeName === "Unassigned" ? "#fef2f2" : "#eff6ff", color: c.routeName === "Unassigned" ? "#dc2626" : "#2563eb", padding: "2px 8px", borderRadius: 12, fontSize: 11, fontWeight: 600 }}>{c.routeName}</span>{c.hasCustomDeliveryFee && <span style={{ background: "#fef08a", color: "#854d0e", padding: "2px 8px", borderRadius: 12, fontSize: 11, fontWeight: 700 }}>*</span>}</div></td>
                 <td style={{ padding: "12px 16px" }}><span style={{ background: c.status === "Active" ? "#dcfce7" : "#f3f4f6", color: c.status === "Active" ? "#16a34a" : "#4b5563", padding: "2px 8px", borderRadius: 12, fontSize: 11, fontWeight: 600 }}>{c.status}</span></td>
                 <td style={{ padding: "12px 16px", textAlign: "center" }}><button onClick={() => setSelectedCustomer(c)} style={{ background: "#eff6ff", color: "#2563eb", border: "1px solid #bfdbfe", padding: "6px 16px", borderRadius: 6, cursor: "pointer", fontSize: 12, fontWeight: 700 }}>View</button></td>
               </tr>
@@ -275,7 +275,7 @@ export default function Customers() {
         <div style={{ position: "fixed", inset: 0, zIndex: 9999, display: "flex", alignItems: "center", justifyContent: "center" }}>
           <div onClick={() => !isAdding && setShowAddModal(false)} style={{ position: "absolute", inset: 0, background: "rgba(17, 24, 39, 0.4)", backdropFilter: "blur(2px)" }}></div>
           <div style={{ position: "relative", width: 400, background: "#fff", borderRadius: 16, padding: 24, animation: "fadeIn 0.2s ease-out" }}>
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 20 }}><h2 style={{ margin: 0, fontSize: 18 }}>Add New Customer</h2><button onClick={() => !isAdding && setShowAddModal(false)} style={{ background: "transparent", border: "none", fontSize: 20, cursor: "pointer" }}>✕</button></div>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 20 }}><h2 style={{ margin: 0, fontSize: 18 }}>Add New Customer</h2><button onClick={() => !isAdding && setShowAddModal(false)} style={{ background: "transparent", border: "none", fontSize: 20, cursor: "pointer" }}>x</button></div>
             <form onSubmit={handleAddUser} style={{ display: "flex", flexDirection: "column", gap: 16 }}>
               <div><label style={{ display: "block", fontSize: 13, fontWeight: 600, marginBottom: 4 }}>Full Name</label><input required value={addName} onChange={e => setAddName(e.target.value)} style={{ width: "100%", padding: 10, borderRadius: 8, border: "1px solid #d1d5db" }} /></div>
               <div><label style={{ display: "block", fontSize: 13, fontWeight: 600, marginBottom: 4 }}>Phone Number</label><input required type="tel" value={addPhone} onChange={e => setAddPhone(e.target.value)} style={{ width: "100%", padding: 10, borderRadius: 8, border: "1px solid #d1d5db" }} /></div>
@@ -286,7 +286,7 @@ export default function Customers() {
         </div>
       )}
 
-      {/* ✅ UPGRADED SLIDE-IN 360 DASHBOARD */}
+      {/* UPGRADED SLIDE-IN 360 DASHBOARD */}
       {selectedCustomer && (
         <div style={{ position: "fixed", top: 0, left: 0, right: 0, bottom: 0, zIndex: 9999, display: "flex", justifyContent: "flex-end" }}>
           <div onClick={() => setSelectedCustomer(null)} style={{ position: "absolute", inset: 0, background: "rgba(17, 24, 39, 0.4)", backdropFilter: "blur(2px)" }}></div>
@@ -299,21 +299,21 @@ export default function Customers() {
                   <h2 style={{ margin: 0, fontSize: 22, color: "#111827", fontWeight: 800 }}>{selectedCustomer.name}</h2>
                   <div style={{ fontSize: 13, color: "#6b7280", marginTop: 4 }}>ID: {selectedCustomer.id.slice(-8).toUpperCase()} | Joined: {selectedCustomer.createdAt.toLocaleDateString()}</div>
                 </div>
-                <button onClick={() => setSelectedCustomer(null)} style={{ background: "#f3f4f6", border: "none", width: 32, height: 32, borderRadius: 16, cursor: "pointer", fontSize: 14, fontWeight: "bold", color: "#4b5563" }}>✕</button>
+                <button onClick={() => setSelectedCustomer(null)} style={{ background: "#f3f4f6", border: "none", width: 32, height: 32, borderRadius: 16, cursor: "pointer", fontSize: 14, fontWeight: "bold", color: "#4b5563" }}>x</button>
               </div>
               
               {/* Internal Tabs */}
               <div style={{ display: "flex", borderBottom: "1px solid #e5e7eb" }}>
-                <button className={`tab-btn ${panelTab === "settings" ? "active" : ""}`} onClick={() => setPanelTab("settings")}>⚙️ Settings</button>
-                <button className={`tab-btn ${panelTab === "profile" ? "active" : ""}`} onClick={() => setPanelTab("profile")}>👤 Profile & Subs</button>
-                <button className={`tab-btn ${panelTab === "ledger" ? "active" : ""}`} onClick={() => setPanelTab("ledger")}>📜 Ledger</button>
+                <button className={`tab-btn ${panelTab === "settings" ? "active" : ""}`} onClick={() => setPanelTab("settings")}>Settings Settings</button>
+                <button className={`tab-btn ${panelTab === "profile" ? "active" : ""}`} onClick={() => setPanelTab("profile")}>User Profile & Subs</button>
+                <button className={`tab-btn ${panelTab === "ledger" ? "active" : ""}`} onClick={() => setPanelTab("ledger")}>Log Ledger</button>
               </div>
             </div>
             
             {/* Body */}
             <div style={{ flex: 1, overflowY: "auto", padding: 24 }}>
               {customerDetailsLoading ? (
-                <div style={{ textAlign: "center", padding: 40, color: "#6b7280" }}>Fetching full 360° profile...</div>
+                <div style={{ textAlign: "center", padding: 40, color: "#6b7280" }}>Fetching full 360 deg profile...</div>
               ) : (
                 <>
                   {/* TAB 1: SETTINGS & WALLET */}
@@ -335,7 +335,7 @@ export default function Customers() {
                           </div>
                           {hasCustomFee && (
                             <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                              <span style={{ fontSize: 13, fontWeight: 600, color: "#854d0e" }}>Flat Fee: ₹</span>
+                              <span style={{ fontSize: 13, fontWeight: 600, color: "#854d0e" }}>Flat Fee: Rs.</span>
                               <input type="number" value={customFeeAmount} onChange={e => setCustomFeeAmount(Number(e.target.value))} style={{ flex: 1, padding: "8px 12px", borderRadius: 6, border: "1px solid #fde047", fontSize: 14 }} />
                             </div>
                           )}
@@ -347,7 +347,7 @@ export default function Customers() {
                         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 20 }}>
                           <h3 style={{ margin: 0, fontSize: 14, color: "#4b5563", textTransform: "uppercase", letterSpacing: 1 }}>Manual Adjustment</h3>
                           <div style={{ fontSize: 24, fontWeight: 800, color: selectedCustomer.walletBalance > 0 ? "#dc2626" : selectedCustomer.walletBalance < 0 ? "#16a34a" : "#111827" }}>
-                            {selectedCustomer.walletBalance > 0 ? "-" : selectedCustomer.walletBalance < 0 ? "+" : ""}₹{Math.abs(selectedCustomer.walletBalance).toFixed(2)}
+                            {selectedCustomer.walletBalance > 0 ? "-" : selectedCustomer.walletBalance < 0 ? "+" : ""}Rs.{Math.abs(selectedCustomer.walletBalance).toFixed(2)}
                           </div>
                         </div>
                         <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
@@ -355,7 +355,7 @@ export default function Customers() {
                             <select value={walletAdjType} onChange={e => setWalletAdjType(e.target.value as any)} style={{ width: "110px", padding: "10px", borderRadius: 8, border: "1px solid #d1d5db", fontSize: 14, background: walletAdjType === "credit" ? "#f0fdf4" : "#fef2f2", color: walletAdjType === "credit" ? "#16a34a" : "#dc2626", fontWeight: 600 }}>
                               <option value="credit">+ Add Credit</option><option value="debit">- Add Debt</option>
                             </select>
-                            <input type="number" placeholder="Amount (₹)" value={walletAdjAmount} onChange={e => setWalletAdjAmount(e.target.value)} style={{ flex: 1, padding: "10px", borderRadius: 8, border: "1px solid #d1d5db", fontSize: 14 }} />
+                            <input type="number" placeholder="Amount (Rs.)" value={walletAdjAmount} onChange={e => setWalletAdjAmount(e.target.value)} style={{ flex: 1, padding: "10px", borderRadius: 8, border: "1px solid #d1d5db", fontSize: 14 }} />
                           </div>
                           <input type="text" placeholder="Note (e.g. Cash Paid)" value={walletAdjNote} onChange={e => setWalletAdjNote(e.target.value)} style={{ width: "100%", padding: "10px", borderRadius: 8, border: "1px solid #d1d5db", fontSize: 14 }} />
                           <button onClick={handleAdjustWallet} disabled={isSaving || !walletAdjAmount} style={{ width: "100%", padding: "12px", background: walletAdjType === "credit" ? "#16a34a" : "#dc2626", color: "#fff", border: "none", borderRadius: 8, fontWeight: 700, cursor: "pointer" }}>Apply Adjustment</button>
@@ -399,7 +399,7 @@ export default function Customers() {
                                   <div style={{ fontWeight: 700, fontSize: 14 }}>{sub.productName}</div>
                                   <span style={{ background: sub.isActive ? "#dcfce7" : "#f3f4f6", color: sub.isActive ? "#16a34a" : "#4b5563", padding: "2px 8px", borderRadius: 12, fontSize: 10, fontWeight: 700 }}>{sub.isActive ? "ACTIVE" : "PAUSED"}</span>
                                 </div>
-                                <div style={{ fontSize: 13, color: "#4b5563", marginTop: 4 }}>{sub.scheduleType.replace("_", " ").toUpperCase()} • {sub.qty} {sub.unit}</div>
+                                <div style={{ fontSize: 13, color: "#4b5563", marginTop: 4 }}>{sub.scheduleType.replace("_", " ").toUpperCase()} | {sub.qty} {sub.unit}</div>
                               </div>
                             ))}
                           </div>
@@ -423,7 +423,7 @@ export default function Customers() {
                                 <div style={{ fontSize: 12, color: "#6b7280", marginTop: 4 }}>{tx.createdAt?.toDate?.()?.toLocaleString() || "Recent"}</div>
                               </div>
                               <div style={{ fontWeight: 800, fontSize: 15, color: tx.type === "credit" ? "#16a34a" : "#dc2626" }}>
-                                {tx.type === "credit" ? "+" : "-"}₹{Number(tx.amount).toFixed(2)}
+                                {tx.type === "credit" ? "+" : "-"}Rs.{Number(tx.amount).toFixed(2)}
                               </div>
                             </div>
                           ))}

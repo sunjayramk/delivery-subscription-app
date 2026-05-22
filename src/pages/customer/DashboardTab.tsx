@@ -106,16 +106,16 @@ export default function DashboardTab({ subscriptions, setActiveTab, handleToggle
   return (
     <div style={{ display: "flex", flexDirection: "column", height: "100%", background: "#f9fafb" }}>
       
-      {/* 🗓️ TOP HALF: THE CALENDAR */}
+      {/* Date TOP HALF: THE CALENDAR */}
       <div style={{ background: "#fff", padding: "20px 16px", borderBottom: "1px solid #e5e7eb", borderRadius: "0 0 24px 24px", boxShadow: "0 4px 20px rgba(0,0,0,0.03)" }}>
         
         {/* Month Navigation */}
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 20 }}>
-          <button onClick={handlePrevMonth} style={navButtonStyle}>❮</button>
+          <button onClick={handlePrevMonth} style={navButtonStyle}>Prev</button>
           <h2 style={{ margin: 0, fontSize: 18, fontWeight: 700, color: "#111827" }}>
             {MONTHS[month]} {year}
           </h2>
-          <button onClick={handleNextMonth} style={navButtonStyle}>❯</button>
+          <button onClick={handleNextMonth} style={navButtonStyle}>Next</button>
         </div>
 
         {/* Weekdays Row */}
@@ -180,7 +180,7 @@ export default function DashboardTab({ subscriptions, setActiveTab, handleToggle
         </div>
       </div>
 
-      {/* 📦 BOTTOM HALF: SELECTED DATE DETAILS */}
+      {/* Package BOTTOM HALF: SELECTED DATE DETAILS */}
       <div style={{ padding: 20, flex: 1 }}>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
           <div>
@@ -210,11 +210,11 @@ export default function DashboardTab({ subscriptions, setActiveTab, handleToggle
                   <div style={{ padding: 16, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
                     <div style={{ display: "flex", gap: 12, alignItems: "center" }}>
                       <div style={{ width: 48, height: 48, background: "#eff6ff", borderRadius: 10, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 24 }}>
-                        🥛 {/* Placeholder for product image */}
+                        Milk {/* Placeholder for product image */}
                       </div>
                       <div>
                         <h4 style={{ margin: 0, fontSize: 15, color: "#111827", textDecoration: isSkipped ? "line-through" : "none" }}>{sub.productName}</h4>
-                        <p style={{ margin: "2px 0 0 0", fontSize: 13, color: "#6b7280" }}>{sub.unit} • <span style={{ fontWeight: 600, color: "#111827" }}>₹{sub.price}</span></p>
+                        <p style={{ margin: "2px 0 0 0", fontSize: 13, color: "#6b7280" }}>{sub.unit} | <span style={{ fontWeight: 600, color: "#111827" }}>Rs.{sub.price}</span></p>
                       </div>
                     </div>
 
@@ -239,7 +239,7 @@ export default function DashboardTab({ subscriptions, setActiveTab, handleToggle
                     }}
                   >
                     <span style={{ fontSize: 13, fontWeight: 700, color: isSkipped ? "#16a34a" : "#dc2626" }}>
-                      {isSkipped ? "✓ Delivery Skipped (Tap to Resume)" : "Cancel Delivery for this day"}
+                      {isSkipped ? "OK Delivery Skipped (Tap to Resume)" : "Cancel Delivery for this day"}
                     </span>
                   </div>
                   

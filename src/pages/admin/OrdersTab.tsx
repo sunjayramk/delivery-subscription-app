@@ -18,7 +18,7 @@ interface OrdersTabProps {
   handleUpdateOrderStatus: (orderId: string, status: string) => void;
 }
 
-// ✅ HELPER: Safely converts Firestore Timestamps or Strings into JS Dates
+// HELPER: Safely converts Firestore Timestamps or Strings into JS Dates
 function ensureDate(dateValue: any): Date | null {
   if (!dateValue) return null;
   if (dateValue instanceof Date) return dateValue;
@@ -57,7 +57,7 @@ export default function OrdersTab({
   const [filterTo, setFilterTo] = useState("");
   const [updatingId, setUpdatingId] = useState<string | null>(null);
 
-  // ✅ FIXED: Safely sort and filter orders using the helper
+  // FIXED: Safely sort and filter orders using the helper
   const sortedOrders = [...orders]
     .sort((a, b) => {
       const dateA = ensureDate(a.createdAt)?.getTime() ?? 0;
@@ -83,7 +83,7 @@ export default function OrdersTab({
   return (
     <section style={cardStyle}>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 12, marginBottom: 16 }}>
-        <h2 style={{ margin: 0 }}>🧾 Orders</h2>
+        <h2 style={{ margin: 0 }}>Invoice Orders</h2>
         <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
           <div style={{ display: "flex", flexDirection: "column" }}>
             <label style={{ fontSize: 11, color: "#666", marginBottom: 2 }}>From</label>
@@ -144,21 +144,21 @@ export default function OrdersTab({
                       #{o.id.slice(-6).toUpperCase()}
                     </span>
                     <span style={{ marginLeft: 8, fontSize: 12, color: "#666" }}>
-                      {o.source === "subscription" ? "📅 Subscription" : "🛒 One-time"}
+                      {o.source === "subscription" ? "Date Subscription" : "Cart One-time"}
                     </span>
                     {o.routeName && (
                       <span style={{ marginLeft: 8, fontSize: 12, color: "#666" }}>
-                        🗺 {o.routeName}
+                        Map {o.routeName}
                       </span>
                     )}
                   </div>
                   <div style={{ fontSize: 12, color: "#9ca3af" }}>
-                    {displayDate ? displayDate.toLocaleString() : "—"}
+                    {displayDate ? displayDate.toLocaleString() : "-"}
                   </div>
                 </div>
 
                 <div style={{ fontSize: 13, marginBottom: 8, color: "#374151" }}>
-                  👤 {o.customerId ? formatCustomerLabel(o.customerId) : "Unknown"}
+                  User {o.customerId ? formatCustomerLabel(o.customerId) : "Unknown"}
                 </div>
 
                 <div style={{ borderTop: "1px solid #f3f4f6", borderBottom: "1px solid #f3f4f6", padding: "8px 0", marginBottom: 8 }}>
@@ -167,15 +167,15 @@ export default function OrdersTab({
                       key={idx}
                       style={{ display: "flex", justifyContent: "space-between", fontSize: 13, padding: "2px 0" }}
                     >
-                      <span>{it.name} ({it.unit}) × {it.qty}</span>
-                      <span style={{ fontWeight: 500 }}>₹{((it.price ?? 0) * (it.qty ?? 1)).toFixed(2)}</span>
+                      <span>{it.name} ({it.unit}) x {it.qty}</span>
+                      <span style={{ fontWeight: 500 }}>Rs.{((it.price ?? 0) * (it.qty ?? 1)).toFixed(2)}</span>
                     </div>
                   ))}
                 </div>
 
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 8 }}>
                   <div style={{ fontWeight: 600, fontSize: 14 }}>
-                    Total: ₹{total.toFixed(2)}
+                    Total: Rs.{total.toFixed(2)}
                   </div>
 
                   <div style={{ display: "flex", alignItems: "center", gap: 8 }}>

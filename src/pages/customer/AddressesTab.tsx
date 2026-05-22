@@ -138,7 +138,7 @@ export default function AddressesTab({
                   onClick={() => setShowForm(false)}
                   style={{ background: "none", border: "none", fontSize: 20, cursor: "pointer", color: "#666" }}
                 >
-                  ✕
+                  x
                 </button>
               </div>
 
@@ -163,7 +163,7 @@ export default function AddressesTab({
                           fontWeight: 500,
                         }}
                       >
-                        {opt === "Home" ? "🏠 Home" : opt === "Work" ? "💼 Work" : "📍 Other"}
+                        {opt === "Home" ? "Home" : opt === "Work" ? "Work" : "Location Other"}
                       </button>
                     ))}
                   </div>
@@ -292,7 +292,7 @@ export default function AddressesTab({
                 color: "#666",
               }}
             >
-              <div style={{ fontSize: 32, marginBottom: 8 }}>📍</div>
+              <div style={{ fontSize: 32, marginBottom: 8 }}>Location</div>
               <p style={{ margin: 0 }}>No addresses added yet.</p>
               <p style={{ margin: "4px 0 0", fontSize: 13 }}>Click "Add Address" to get started.</p>
             </div>
@@ -327,7 +327,7 @@ export default function AddressesTab({
                   )}
 
                   <div style={{ fontSize: 13, fontWeight: 600, marginBottom: 4 }}>
-                    {a.label === "Home" ? "🏠" : a.label === "Work" ? "💼" : "📍"} {a.label}
+                    {a.label === "Home" ? "Home" : a.label === "Work" ? "Work" : "Location"} {a.label}
                   </div>
 
                   <div style={{ fontSize: 13, color: "#374151", lineHeight: 1.5 }}>
@@ -339,12 +339,12 @@ export default function AddressesTab({
                   </div>
 
                   {a.phone && (
-                    <div style={{ fontSize: 12, color: "#666", marginTop: 4 }}>📞 {a.phone}</div>
+                    <div style={{ fontSize: 12, color: "#666", marginTop: 4 }}>Phone {a.phone}</div>
                   )}
 
                   {a.mapUrl && (
                     <div style={{ fontSize: 12, marginTop: 4, color: "#666", fontStyle: "italic" }}>
-                      📝 {a.mapUrl}
+                      Note {a.mapUrl}
                     </div>
                   )}
 

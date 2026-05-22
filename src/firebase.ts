@@ -5,7 +5,7 @@ import { getFirestore, doc, getDoc } from "firebase/firestore";
 import { getStorage } from "firebase/storage";
 
 
-// ⬇️ Replace this object with config from Firebase console
+// down Replace this object with config from Firebase console
 const firebaseConfig = {
   apiKey: import.meta.env.VITE_FIREBASE_API_KEY,
   authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN,

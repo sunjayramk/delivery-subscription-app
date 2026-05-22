@@ -144,7 +144,7 @@ export default function DeliveryTab() {
 
   const handleNotifyAgent = (agentId: string) => {
     if (!agentId) return;
-    alert("🔔 Pinged Agent App!");
+    alert("Alert Pinged Agent App!");
   };
 
   if (loading) return <div style={{ padding: 40, textAlign: "center", color: "#6b7280" }}>Syncing Live Operations...</div>;
@@ -153,15 +153,15 @@ export default function DeliveryTab() {
     <div style={{ maxWidth: 1200, margin: "0 auto", padding: "24px 16px" }}>
       
       <div style={{ marginBottom: 24 }}>
-        <h1 style={{ margin: "0 0 8px 0", fontSize: 24, color: "#111827" }}>🚚 Live Dispatch Center</h1>
+        <h1 style={{ margin: "0 0 8px 0", fontSize: 24, color: "#111827" }}>Delivery Live Dispatch Center</h1>
         <p style={{ margin: 0, color: "#6b7280", fontSize: 14 }}>Assign agents and track today's live deliveries.</p>
       </div>
 
-      {/* 🚨 UNASSIGNED WARNINGS */}
+      {/* Alert UNASSIGNED WARNINGS */}
       {(unassignedCustomersCount > 0 || unassignedOrdersCount > 0) && (
         <div style={{ background: "#fffbeb", border: "1px solid #fde68a", borderRadius: 12, padding: "16px 20px", display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 24 }}>
           <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-            <span style={{ fontSize: 24 }}>⚠️</span>
+            <span style={{ fontSize: 24 }}>!</span>
             <div>
               <h4 style={{ margin: 0, color: "#92400e", fontSize: 15 }}>Unassigned Customers Detected</h4>
               <p style={{ margin: "4px 0 0 0", color: "#b45309", fontSize: 13, fontWeight: 500 }}>
@@ -176,7 +176,7 @@ export default function DeliveryTab() {
         </div>
       )}
 
-      {/* 📋 LIVE ROUTE TABLE */}
+      {/* List LIVE ROUTE TABLE */}
       {routes.length === 0 ? (
         <div style={{ background: "#fff", padding: 40, textAlign: "center", borderRadius: 16, border: "1px dashed #d1d5db" }}>
           <p style={{ color: "#6b7280", fontSize: 15 }}>No routes found. Please create them in the Logistics tab.</p>
@@ -230,7 +230,7 @@ export default function DeliveryTab() {
                           color: route.assignedAgentId ? "#111827" : "#ef4444"
                         }}
                       >
-                        <option value="">🚨 Unassigned</option>
+                        <option value="">Alert Unassigned</option>
                         {agents.map(a => <option key={a.id} value={a.id}>{a.name}</option>)}
                       </select>
                     </td>
@@ -250,7 +250,7 @@ export default function DeliveryTab() {
                     <td style={{ padding: "20px", verticalAlign: "top", textAlign: "right" }}>
                       <div style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}>
                         <button disabled={!route.assignedAgentId} onClick={() => handleNotifyAgent(route.assignedAgentId)} style={{ padding: "8px", background: route.assignedAgentId ? "#eff6ff" : "#f3f4f6", border: route.assignedAgentId ? "1px solid #bfdbfe" : "1px solid #e5e7eb", borderRadius: 8, cursor: route.assignedAgentId ? "pointer" : "not-allowed", color: route.assignedAgentId ? "#2563eb" : "#9ca3af" }}>
-                          🔔
+                          Alert
                         </button>
                       </div>
                     </td>
