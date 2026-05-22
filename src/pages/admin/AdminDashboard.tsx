@@ -50,6 +50,14 @@ const MONTHS = [
   { value: "11", label: "November" }, { value: "12", label: "December" },
 ];
 
+const ROLE_PERMISSIONS: Record<string, string[]> = {
+  admin: ["dashboard", "manifest", "customers", "team", "logistics", "delivery", "products", "plans", "billing", "orders", "settings"],
+  account_manager: ["dashboard", "customers", "billing", "orders"],
+  delivery_manager: ["dashboard", "manifest", "logistics", "delivery", "orders"],
+  data_manager: ["dashboard", "products", "plans"],
+  view_only: ["dashboard"],
+};
+
 interface Tenant {
   id: string;
   name: string;
@@ -103,6 +111,8 @@ interface TenantUser {
 
 export default function AdminDashboard() {
   const { user } = useAuth();
+  const userId = user?.uid;
+  const tenantId = user?.tenantId;
 
   const [toastMessage, setToastMessage] = useState("");
   const [toastType, setToastType] = useState<"success" | "error" | "info">("success");
@@ -390,35 +400,35 @@ export default function AdminDashboard() {
 
   useEffect(() => {
     async function loadTenantAndRole() {
-      if (!user) { setLoadingTenant(false); return; }
+      if (!userId) {
+        setTenant(null);
+        setLoadingTenant(false);
+        return;
+      }
+
+      setLoadingTenant(true);
       try {
         // 1. Fetch the user's profile to see their role
-        const userSnap = await getDoc(doc(db, "users", user.uid));
+        const userSnap = await getDoc(doc(db, "users", userId));
         if (userSnap.exists()) {
           setCurrentUserRole(userSnap.data().role || "admin");
         }
 
         // 2. Load Tenant Data
-        if (user.tenantId) {
-          const tenantSnap = await getDoc(doc(db, "tenants", user.tenantId));
-          if (tenantSnap.exists()) setTenant({ id: tenantSnap.id, ...tenantSnap.data() } as Tenant);
+        if (tenantId) {
+          const tenantSnap = await getDoc(doc(db, "tenants", tenantId));
+          setTenant(tenantSnap.exists() ? ({ id: tenantSnap.id, ...tenantSnap.data() } as Tenant) : null);
+        } else {
+          setTenant(null);
         }
       } finally { 
         setLoadingTenant(false); 
       }
     }
     loadTenantAndRole();
-  }, [user]);
+  }, [userId, tenantId]);
 
   // ✅ SECURITY MATRIX: Put this HIGH UP, before any 'if (loading) return' statements!
-  const ROLE_PERMISSIONS: Record<string, string[]> = {
-    admin: ["dashboard", "manifest", "customers", "team", "logistics", "delivery", "products", "plans", "billing", "orders", "settings"],
-    account_manager: ["dashboard", "customers", "billing", "orders"],
-    delivery_manager: ["dashboard", "manifest", "logistics", "delivery", "orders"],
-    data_manager: ["dashboard", "products", "plans"],
-    view_only: ["dashboard"]
-  };
-
   const allowedTabs = ROLE_PERMISSIONS[currentUserRole] || ROLE_PERMISSIONS["admin"];
 
   useEffect(() => {
@@ -426,15 +436,6 @@ export default function AdminDashboard() {
       setActiveTab("dashboard");
     }
   }, [activeTab, allowedTabs]);
-
-  // ... rest of your existing useEffects ...
-
-    useEffect(() => {
-    if (tenant) {
-      loadProducts(tenant.id); loadOrders(tenant.id); loadAccounts(tenant.id);
-      loadUsersAndAssignments(tenant.id); loadCategories(tenant.id); loadBanners(tenant.id); // ✅ Added loadBanners
-    }
-  }, [tenant]);
 
   // ✅ FIX 1: Make sure we actually pull the sortOrder from the database!
   async function loadCategories(tId: string) {
