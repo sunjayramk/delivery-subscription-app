@@ -1,3 +1,5 @@
+//Admin - OrdersTab.tsx
+
 import { useState } from "react";
 
 interface OrderItem {
@@ -14,6 +16,16 @@ interface OrdersTabProps {
   ordersError: string;
   formatCustomerLabel: (id: string) => string;
   handleUpdateOrderStatus: (orderId: string, status: string) => void;
+}
+
+// ✅ HELPER: Safely converts Firestore Timestamps or Strings into JS Dates
+function ensureDate(dateValue: any): Date | null {
+  if (!dateValue) return null;
+  if (dateValue instanceof Date) return dateValue;
+  if (typeof dateValue.toDate === "function") return dateValue.toDate();
+  if (dateValue.seconds) return new Date(dateValue.seconds * 1000);
+  const parsed = new Date(dateValue);
+  return isNaN(parsed.getTime()) ? null : parsed;
 }
 
 function getStatusStyle(status: string): React.CSSProperties {
@@ -45,11 +57,18 @@ export default function OrdersTab({
   const [filterTo, setFilterTo] = useState("");
   const [updatingId, setUpdatingId] = useState<string | null>(null);
 
+  // ✅ FIXED: Safely sort and filter orders using the helper
   const sortedOrders = [...orders]
-    .sort((a, b) => (b.createdAt?.getTime() ?? 0) - (a.createdAt?.getTime() ?? 0))
+    .sort((a, b) => {
+      const dateA = ensureDate(a.createdAt)?.getTime() ?? 0;
+      const dateB = ensureDate(b.createdAt)?.getTime() ?? 0;
+      return dateB - dateA;
+    })
     .filter((o) => {
-      if (!o.createdAt) return true;
-      const dateStr = o.createdAt.toLocaleDateString('en-CA');
+      const orderDate = ensureDate(o.createdAt);
+      if (!orderDate) return true;
+      
+      const dateStr = orderDate.toLocaleDateString('en-CA'); // YYYY-MM-DD
       if (filterFrom && dateStr < filterFrom) return false;
       if (filterTo && dateStr > filterTo) return false;
       return true;
@@ -63,7 +82,6 @@ export default function OrdersTab({
 
   return (
     <section style={cardStyle}>
-      {/* Header with date filter */}
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 12, marginBottom: 16 }}>
         <h2 style={{ margin: 0 }}>🧾 Orders</h2>
         <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
@@ -88,7 +106,7 @@ export default function OrdersTab({
           {(filterFrom || filterTo) && (
             <button
               onClick={() => { setFilterFrom(""); setFilterTo(""); }}
-              style={{ padding: "6px 12px", borderRadius: 8, border: "1px solid #d1d5db", background: "#f9fafb", cursor: "pointer", fontSize: 13, marginTop: 16 }}
+              style={{ padding: "6px 12px", borderRadius: 8, border: "1px solid #d1d5db", background: "#f9fafb", cursor: "pointer", fontSize: 13, alignSelf: "flex-end" }}
             >
               Clear
             </button>
@@ -108,6 +126,8 @@ export default function OrdersTab({
         <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
           {sortedOrders.map((o) => {
             const total = getOrderTotal(o.items || []);
+            const displayDate = ensureDate(o.createdAt);
+            
             return (
               <div
                 key={o.id}
@@ -118,7 +138,6 @@ export default function OrdersTab({
                   background: "#fafafa",
                 }}
               >
-                {/* Top row */}
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8, flexWrap: "wrap", gap: 8 }}>
                   <div>
                     <span style={{ fontWeight: 600, fontSize: 14 }}>
@@ -134,16 +153,14 @@ export default function OrdersTab({
                     )}
                   </div>
                   <div style={{ fontSize: 12, color: "#9ca3af" }}>
-                    {o.createdAt ? o.createdAt.toLocaleString() : "—"}
+                    {displayDate ? displayDate.toLocaleString() : "—"}
                   </div>
                 </div>
 
-                {/* Customer */}
                 <div style={{ fontSize: 13, marginBottom: 8, color: "#374151" }}>
                   👤 {o.customerId ? formatCustomerLabel(o.customerId) : "Unknown"}
                 </div>
 
-                {/* Items */}
                 <div style={{ borderTop: "1px solid #f3f4f6", borderBottom: "1px solid #f3f4f6", padding: "8px 0", marginBottom: 8 }}>
                   {(o.items || []).map((it: OrderItem, idx: number) => (
                     <div
@@ -156,7 +173,6 @@ export default function OrdersTab({
                   ))}
                 </div>
 
-                {/* Total + Status */}
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 8 }}>
                   <div style={{ fontWeight: 600, fontSize: 14 }}>
                     Total: ₹{total.toFixed(2)}

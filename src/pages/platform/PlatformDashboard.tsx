@@ -170,7 +170,9 @@ export default function PlatformDashboard() {
         />
       )}
         <TopBar title="Platform Super Admin" />
-        <div style={{ padding: 24 }}>Loading tenants...</div>
+        <div className="desktop-container">
+          <p>Loading tenants...</p>
+        </div>
       </div>
     );
   }
@@ -179,7 +181,9 @@ export default function PlatformDashboard() {
     return (
       <div>
         <TopBar title="Platform Super Admin" />
-        <div style={{ padding: 24, color: "red" }}>{error}</div>
+        <div className="desktop-container">
+          <p style={{ color: "red" }}>{error}</p>
+        </div>
       </div>
     );
   }
@@ -187,7 +191,7 @@ export default function PlatformDashboard() {
   return (
     <div>
       <TopBar title="Platform Super Admin" />
-      <div style={{ padding: 24, maxWidth: 900, margin: "0 auto" }}>
+      <div className="desktop-container">
         <h1>Platform Super Admin</h1>
         <p>Manage tenants (stores) and see global analytics here.</p>
 

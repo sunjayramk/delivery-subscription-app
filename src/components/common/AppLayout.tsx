@@ -1,6 +1,7 @@
 import type { ReactNode } from "react";
 
 interface Props {
+  title?: string; // ✅ 1. ADD THIS OPTIONAL PROP
   tabs: { key: string; label: string }[];
   activeTab: string;
   setActiveTab: (tab: any) => void;
@@ -8,6 +9,7 @@ interface Props {
 }
 
 export default function AppLayout({
+  title, // ✅ 2. DESTRUCTURE IT HERE
   tabs,
   activeTab,
   setActiveTab,
@@ -49,7 +51,8 @@ export default function AppLayout({
               fontSize: 18,
             }}
           >
-            Customer App
+            {/* ✅ 3. USE THE PROP, FALLBACK TO "Customer App" IF NONE PROVIDED */}
+            {title || "Customer App"} 
           </div>
 
           {tabs.map((tab) => (

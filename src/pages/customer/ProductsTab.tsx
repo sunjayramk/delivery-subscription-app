@@ -1,163 +1,155 @@
-// === ProductsTab.tsx ===[code here]
+import { useState } from "react";
 
-interface Product {
-  id: string;
-  name: string;
-  unit: string;
-  price: number;
-  categoryId?: string;
-}
-
-interface Category {
-  id: string;
-  name: string;
-}
-
-interface Props {
-  products: Product[];
-  categories: Category[];
+interface ProductsTabProps {
+  products: any[];
+  categories: any[];
+  banners: any[];
   loadingProducts: boolean;
   errorProducts: string;
-  placingOrderId: string | null;
-  handleOrderOnce: (product: Product) => void;
-  startSubscription: (product: Product) => void;
+  cart: Record<string, number>;
+  updateCartQty: (product: any, delta: number) => void;
+  startSubscription: (product: any) => void;
 }
 
 export default function ProductsTab({
-  products,
-  categories,
-  loadingProducts,
-  errorProducts,
-  placingOrderId,
-  handleOrderOnce,
-  startSubscription,
-}: Props) {
-  return (
-    <section style={{ marginTop: 16, padding: "0 8px" }}>
-      <h2 style={{ marginBottom: 20, fontSize: 20 }}>Products from your store</h2>
+  products, categories, banners, loadingProducts, errorProducts, cart, updateCartQty, startSubscription
+}: ProductsTabProps) {
+  const [selectedCategory, setSelectedCategory] = useState<string>("all");
 
-      {loadingProducts ? (
-        <p>Loading products...</p>
-      ) : errorProducts ? (
-        <p style={{ color: "red" }}>{errorProducts}</p>
-      ) : products.length === 0 ? (
-        <p>No products available yet.</p>
-       ) : (
-        <>
-          {/* Group products by category */}
-          {(() => {
-            const uncategorized = products.filter((p) => !p.categoryId);
-            const grouped = categories.map((cat) => ({
-              category: cat as Category,
-              products: products.filter((p) => p.categoryId === cat.id) as Product[],
-            })).filter((g) => g.products.length > 0);
+  if (loadingProducts) return <div style={{ padding: 40, textAlign: "center", color: "#6b7280", fontWeight: 600 }}>Loading fresh products...</div>;
+  if (errorProducts) return <div style={{ padding: 40, textAlign: "center", color: "#dc2626", fontWeight: 600 }}>{errorProducts}</div>;
 
-            const renderProductCard = (p: Product) => (
-              <div
-                key={p.id}
-                style={{
-                  borderRadius: 14,
-                  border: "1px solid #e5e7eb",
-                  padding: 18,
-                  background: "#fff",
-                  boxShadow: "0 1px 4px rgba(0,0,0,0.06)",
-                  display: "flex",
-                  flexDirection: "column",
-                  justifyContent: "space-between",
-                }}
-              >
-                <div>
-                  <h3 style={{ marginTop: 0, marginBottom: 4, fontSize: 15 }}>{p.name}</h3>
-                  <p style={{ margin: "0 0 4px", color: "#6b7280", fontSize: 12 }}>{p.unit}</p>
-                  <p style={{ margin: "0 0 14px", fontWeight: 700, fontSize: 18, color: "#111827" }}>₹{p.price}</p>
-                </div>
-                <div style={{ display: "flex", gap: 8 }}>
-                  <button
-                    onClick={() => handleOrderOnce(p)}
-                    disabled={placingOrderId === p.id}
-                    style={{
-                      flex: 1,
-                      padding: "8px 0",
-                      borderRadius: 8,
-                      border: "1px solid #d1d5db",
-                      background: "#fff",
-                      cursor: placingOrderId === p.id ? "not-allowed" : "pointer",
-                      fontSize: 13,
-                      color: "#374151",
-                      fontWeight: 500,
-                    }}
-                  >
-                    {placingOrderId === p.id ? "Placing..." : "Order once"}
-                  </button>
-                  <button
-                    onClick={() => startSubscription(p)}
-                    style={{
-                      flex: 1,
-                      padding: "8px 0",
-                      borderRadius: 8,
-                      border: "none",
-                      background: "#111827",
-                      color: "#fff",
-                      cursor: "pointer",
-                      fontSize: 13,
-                      fontWeight: 500,
-                    }}
-                  >
-                    Subscribe
-                  </button>
-                </div>
+  // 🧩 REUSABLE PRODUCT CARD COMPONENT
+  const renderProductCard = (product: any) => {
+    const qtyInCart = cart[product.id] || 0;
+    return (
+      <div key={product.id} style={{ background: "#fff", borderRadius: 16, overflow: "hidden", border: "1px solid #f3f4f6", display: "flex", flexDirection: "column", position: "relative", boxShadow: "0 4px 12px rgba(0,0,0,0.03)" }}>
+        {/* Product Image */}
+        <div style={{ height: 130, background: "#f8fafc", display: "flex", alignItems: "center", justifyContent: "center", padding: 12, position: "relative" }}>
+          {product.imageUrl ? (
+            <img src={product.imageUrl} alt={product.name} style={{ width: "100%", height: "100%", objectFit: "contain", mixBlendMode: "darken" }} />
+          ) : (
+            <div style={{ fontSize: 40, opacity: 0.1 }}>📦</div>
+          )}
+        </div>
+
+        {/* Product Info & Controls */}
+        <div style={{ padding: "12px", display: "flex", flexDirection: "column", flex: 1, gap: 4 }}>
+          <div style={{ fontSize: 13, fontWeight: 700, color: "#111827", lineHeight: 1.3, height: 34, overflow: "hidden", display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical" }}>
+            {product.name}
+          </div>
+          <div style={{ fontSize: 11, color: "#6b7280", fontWeight: 600 }}>{product.unit}</div>
+          
+          <div style={{ marginTop: "auto", paddingTop: 10, display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+            <div style={{ fontSize: 15, fontWeight: 800, color: "#111827" }}>₹{product.price}</div>
+            
+            {/* Dynamic Cart Button */}
+            {qtyInCart > 0 ? (
+              <div style={{ display: "flex", alignItems: "center", background: "#2563eb", borderRadius: 8, overflow: "hidden", boxShadow: "0 2px 6px rgba(37, 99, 235, 0.2)" }}>
+                <button onClick={() => updateCartQty(product, -1)} style={{ width: 30, height: 30, background: "none", border: "none", color: "#fff", fontWeight: 800, cursor: "pointer" }}>-</button>
+                <div style={{ width: 20, textAlign: "center", color: "#fff", fontSize: 13, fontWeight: 700 }}>{qtyInCart}</div>
+                <button onClick={() => updateCartQty(product, 1)} style={{ width: 30, height: 30, background: "none", border: "none", color: "#fff", fontWeight: 800, cursor: "pointer" }}>+</button>
               </div>
-            );
+            ) : (
+              <button onClick={() => updateCartQty(product, 1)} style={{ background: "#eff6ff", color: "#2563eb", border: "1px solid #bfdbfe", padding: "6px 16px", borderRadius: 8, fontSize: 12, fontWeight: 800, cursor: "pointer", transition: "all 0.2s" }}>
+                ADD
+              </button>
+            )}
+          </div>
 
-            return (
-              <>
-                {grouped.map(({ category, products: catProducts }) => (
-                  <div key={category.id} style={{ marginBottom: 32 }}>
-                    <div style={{
-                      display: "inline-block",
-                      marginBottom: 12,
-                      padding: "4px 14px",
-                      borderRadius: 20,
-                      background: "#111827",
-                      color: "#fff",
-                      fontSize: 13,
-                      fontWeight: 600,
-                      letterSpacing: 0.5,
-                    }}>
-                      {category.name}
-                    </div>
-                    <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(220px, 1fr))", gap: 16 }}>
-                      {catProducts.map(renderProductCard)}
-                    </div>
-                  </div>
-                ))}
+          {/* Subscription Action */}
+          {product.isSubscribable !== false && (
+            <button onClick={() => startSubscription(product)} style={{ marginTop: 8, width: "100%", background: "#fff", border: "1px solid #e5e7eb", color: "#374151", padding: "8px", borderRadius: 8, fontSize: 11, fontWeight: 700, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", gap: 6 }}>
+              <span>📅</span> Subscribe
+            </button>
+          )}
+        </div>
+      </div>
+    );
+  };
 
-                {uncategorized.length > 0 && (
-                  <div style={{ marginBottom: 32 }}>
-                    {grouped.length > 0 && (
-                      <div style={{
-                        display: "inline-block",
-                        marginBottom: 12,
-                        padding: "4px 14px",
-                        borderRadius: 20,
-                        background: "#6b7280",
-                        color: "#fff",
-                        fontSize: 13,
-                        fontWeight: 600,
-                      }}>
-                        Other
-                      </div>
-                    )}
-                    <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(220px, 1fr))", gap: 16 }}>
-                      {uncategorized.map(renderProductCard)}
-                    </div>
-                  </div>
-                )}
-              </>
-            );
-          })()}
-        </>
+  // Sort categories by their assigned sortOrder
+  const sortedCategories = [...categories].sort((a, b) => a.sortOrder - b.sortOrder);
+
+  return (
+    <div style={{ paddingBottom: 60 }}>
+      
+      {/* 🎟️ HORIZONTAL BANNERS CAROUSEL (Only visible on 'All Items') */}
+      {selectedCategory === "all" && banners.length > 0 && (
+        <div style={{ display: "flex", overflowX: "auto", padding: "16px", gap: 12, scrollbarWidth: "none", WebkitOverflowScrolling: "touch" }}>
+          {banners.map(b => (
+            <img key={b.id} src={b.imageUrl} alt="Banner" style={{ width: "85%", flexShrink: 0, borderRadius: 12, objectFit: "cover", aspectRatio: "21/9", boxShadow: "0 4px 10px rgba(0,0,0,0.05)" }} />
+          ))}
+        </div>
       )}
-    </section>
-  );
+
+      {/* 🏷️ STICKY CATEGORY PILLS */}
+      <div style={{ position: "sticky", top: 0, background: "rgba(255, 255, 255, 0.95)", backdropFilter: "blur(8px)", zIndex: 40, display: "flex", overflowX: "auto", padding: "12px 16px", gap: 10, scrollbarWidth: "none", borderBottom: "1px solid #e5e7eb", boxShadow: "0 4px 6px -1px rgba(0, 0, 0, 0.05)" }}>
+        <button 
+          onClick={() => setSelectedCategory("all")}
+          style={{ whiteSpace: "nowrap", padding: "8px 16px", borderRadius: 20, border: "none", fontWeight: 700, fontSize: 13, cursor: "pointer", transition: "all 0.2s", background: selectedCategory === "all" ? "#111827" : "#f3f4f6", color: selectedCategory === "all" ? "#fff" : "#4b5563" }}
+        >
+          All Items
+        </button>
+        {sortedCategories.map(cat => (
+          <button 
+            key={cat.id}
+            onClick={() => setSelectedCategory(cat.id)}
+            style={{ whiteSpace: "nowrap", padding: "8px 16px", borderRadius: 20, border: "none", fontWeight: 700, fontSize: 13, cursor: "pointer", transition: "all 0.2s", background: selectedCategory === cat.id ? "#111827" : "#f3f4f6", color: selectedCategory === cat.id ? "#fff" : "#4b5563" }}
+          >
+            {cat.name}
+          </button>
+        ))}
+      </div>
+
+      <div style={{ padding: 16 }}>
+        {/* ========================================= */}
+        {/* VIEW 1: THE "ALL ITEMS" DISCOVERY VIEW    */}
+        {/* ========================================= */}
+        {selectedCategory === "all" ? (
+          <div style={{ display: "flex", flexDirection: "column", gap: 32 }}>
+            {sortedCategories.map(cat => {
+              const catProducts = products.filter(p => p.categoryId === cat.id);
+              if (catProducts.length === 0) return null; // Hide empty categories
+
+              return (
+                <div key={cat.id}>
+                  {/* Category Header with "See All" button */}
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
+                    <h2 style={{ fontSize: 18, fontWeight: 800, color: "#111827", margin: 0 }}>{cat.name}</h2>
+                    {catProducts.length > 4 && (
+                      <button onClick={() => setSelectedCategory(cat.id)} style={{ background: "none", border: "none", color: "#2563eb", fontWeight: 700, fontSize: 13, cursor: "pointer", display: "flex", alignItems: "center", gap: 4 }}>
+                        See All <span>➔</span>
+                      </button>
+                    )}
+                  </div>
+                  
+                  {/* Grid showing maximum of 4 items */}
+                  <div style={{ display: "grid", gridTemplateColumns: "repeat(2, 1fr)", gap: 12 }}>
+                    {catProducts.slice(0, 4).map(renderProductCard)}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        ) : (
+        /* ========================================= */
+        /* VIEW 2: THE SPECIFIC CATEGORY VIEW        */
+        /* ========================================= */
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(2, 1fr)", gap: 12 }}>
+            {products.filter(p => p.categoryId === selectedCategory).map(renderProductCard)}
+            
+            {/* Empty Category Fallback */}
+            {products.filter(p => p.categoryId === selectedCategory).length === 0 && (
+              <div style={{ gridColumn: "1 / span 2", padding: 40, textAlign: "center", color: "#6b7280" }}>
+                <div style={{ fontSize: 40, marginBottom: 12 }}>🛒</div>
+                <div style={{ fontWeight: 600, fontSize: 16 }}>No items in this category yet</div>
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+
+    </div>
+  )
 }

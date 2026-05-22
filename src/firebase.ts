@@ -2,6 +2,8 @@ import { initializeApp, getApps } from "firebase/app";
 import { getAuth, onAuthStateChanged } from "firebase/auth";
 import type { User as FirebaseUser } from "firebase/auth";
 import { getFirestore, doc, getDoc } from "firebase/firestore";
+import { getStorage } from "firebase/storage";
+
 
 // ⬇️ Replace this object with config from Firebase console
 const firebaseConfig = {
@@ -17,12 +19,18 @@ const app = initializeApp(firebaseConfig);
 
 export const auth = getAuth(app);
 export const db = getFirestore(app);
+export const storage = getStorage(app);
 
 // SaaS roles
-export type AppUserRole =
-  | "platform_super_admin"
-  | "tenant_admin"
-  | "agent"
+export type AppUserRole = 
+  | "platform_super_admin" 
+  | "tenant_admin" 
+  | "admin" 
+  | "delivery_manager" 
+  | "account_manager" 
+  | "data_manager" 
+  | "view_only"
+  | "agent" 
   | "customer";
 
 export interface AppUser {

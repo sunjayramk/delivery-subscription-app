@@ -1,17 +1,8 @@
-// This is a large file that contains the main customer home page with multiple tabs (dashboard, wallet, addresses, products, subscriptions, orders).
+//Customer - CustomerHome.tsx
 
-import TopBar from "../../components/common/TopBar";
-import Toast from "../../components/common/Toast";
 import { useEffect, useState } from "react";
-import { useAuth } from "../../context/AuthContext";
-import { db } from "../../firebase";
-import WalletTab from "./WalletTab";
-import AddressesTab from "./AddressesTab";
-import ProductsTab from "./ProductsTab";
-import SubscriptionsTab from "./SubscriptionsTab";
-import OrdersTab from "./OrdersTab";
-import DashboardTab from "./DashboardTab";
-import AppLayout from "../../components/common/AppLayout";
+import { db, auth } from "../../firebase"; 
+import { signOut } from "firebase/auth"; 
 import {
   collection,
   query,
@@ -24,12 +15,32 @@ import {
   updateDoc,
 } from "firebase/firestore";
 
+// UI Components
+import Toast from "../../components/common/Toast";
+import WalletTab from "./WalletTab";
+import AddressesTab from "./AddressesTab";
+import ProductsTab from "./ProductsTab";
+import SubscriptionsTab from "./SubscriptionsTab";
+import OrdersTab from "./OrdersTab";
+import DashboardTab from "./DashboardTab";
+import ProfileTab from "./ProfileTab";
+import CartTab from "./CartTab";
+
+// Authentication & Tenant Bouncers
+import { useTenantResolver } from "../../hooks/useTenantResolver";
+import CustomerAuth from "./CustomerAuth";
+import CustomerOnboarding from "./CustomerOnboarding";
+import { useAuth } from "../../context/AuthContext"; 
+
+// --- INTERFACES ---
 interface Product {
   id: string;
   name: string;
   unit: string;
   price: number;
   categoryId?: string;
+  imageUrl?: string;
+  isSubscribable?: boolean;
 }
 
 interface Order {
@@ -43,6 +54,7 @@ interface Order {
     qty: number;
   }[];
   deliveryAddress?: DeliveryAddress;
+  shift?: string;
 }
 
 interface DeliveryAddress {
@@ -96,100 +108,68 @@ const DAY_LABELS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 
 function formatSchedule(sub: Subscription): string {
   switch (sub.scheduleType) {
-    case "daily":
-      return "Daily";
-    case "alternate_days":
-      return "Alternate days";
-    case "mon_fri":
-      return "Mon–Fri";
-    case "weekends":
-      return "Weekends";
+    case "daily": return "Daily";
+    case "alternate_days": return "Alternate days";
+    case "mon_fri": return "Mon–Fri";
+    case "weekends": return "Weekends";
     case "custom":
-      if (!sub.scheduleDays || sub.scheduleDays.length === 0) {
-        return "Custom days";
-      }
-      return sub.scheduleDays
-        .slice()
-        .sort()
-        .map((d) => DAY_LABELS[d] ?? "")
-        .join(", ");
-    default:
-      return sub.scheduleType;
+      if (!sub.scheduleDays || sub.scheduleDays.length === 0) return "Custom days";
+      return sub.scheduleDays.slice().sort().map((d) => DAY_LABELS[d] ?? "").join(", ");
+    default: return sub.scheduleType;
   }
-}
-
-function formatQtyPattern(sub: Subscription): string | null {
-  const dq = sub.dayQuantities;
-  if (!dq || Object.keys(dq).length === 0) return null;
-  const parts = Object.entries(dq)
-    .sort(([a], [b]) => Number(a) - Number(b))
-    .map(([day, qty]) => `${DAY_LABELS[Number(day)]} ${qty}`);
-  return parts.join(", ");
 }
 
 function formatAddress(addr: DeliveryAddress | undefined): string {
   if (!addr) return "No address set";
-  const parts = [
-    addr.label,
-    addr.line1,
-    addr.area,
-    addr.city,
-    addr.pincode,
-  ].filter(Boolean);
-  return parts.join(", ");
+  return [addr.label, addr.line1, addr.area, addr.city, addr.pincode].filter(Boolean).join(", ");
 }
 
+
 export default function CustomerHome() {
-  const { user } = useAuth();
+  // =========================================================================
+  // 1. ALL HOOKS GO FIRST (The Detectives)
+  // =========================================================================
+  const { resolvedTenant, loading: tenantLoading, error: tenantError } = useTenantResolver();
+  const { user, loading: authLoading } = useAuth(); // MODIFIED: Added authLoading
 
-  // ===== Store Settings State =====
+  const [storeName, setStoreName] = useState("Customer App");
   const [tenantSettings, setTenantSettings] = useState<any>(null);
-
-  useEffect(() => {
-    async function loadTenantSettings() {
-      if (!user?.tenantId) return;
-      try {
-        const snap = await getDoc(doc(db, "tenants", user.tenantId));
-        if (snap.exists()) {
-          setTenantSettings(snap.data().settings || null);
-        }
-      } catch (err) {
-        console.error("Failed to load tenant settings", err);
-      }
-    }
-    loadTenantSettings();
-  }, [user]);
-
-  // Products & Orders
+  
+  // Products & Orders State
   const [products, setProducts] = useState<Product[]>([]);
+  const [cart, setCart] = useState<Record<string, number>>({});
+  const [isCheckingOut, setIsCheckingOut] = useState(false);
+  const [checkoutShift, setCheckoutShift] = useState<"Morning" | "Evening">("Morning");
   const [categories, setCategories] = useState<{ id: string; name: string }[]>([]);
+  const [banners, setBanners] = useState<{ id: string; imageUrl: string }[]>([]);
   const [loadingProducts, setLoadingProducts] = useState(true);
   const [errorProducts, setErrorProducts] = useState("");
-
+  
   const [orders, setOrders] = useState<Order[]>([]);
   const [loadingOrders, setLoadingOrders] = useState(true);
   const [errorOrders, setErrorOrders] = useState("");
-  const [placingOrderId, setPlacingOrderId] = useState<string | null>(null);
 
-  // Subscriptions
+  // Subscriptions State
   const [subscriptions, setSubscriptions] = useState<Subscription[]>([]);
   const [loadingSubs, setLoadingSubs] = useState(true);
   const [errorSubs, setErrorSubs] = useState("");
 
-  // Subscription creation form
   const [subProduct, setSubProduct] = useState<Product | null>(null);
   const [subQty, setSubQty] = useState("1");
   const [subSchedule, setSubSchedule] = useState<string>("daily");
   const [subCustomDays, setSubCustomDays] = useState<number[]>([]);
-  const [subDayQuantities, setSubDayQuantities] = useState<
-    Record<number, string>
-  >({});
+  const [subDayQuantities, setSubDayQuantities] = useState<Record<number, string>>({});
   const [subAddressId, setSubAddressId] = useState<string>("");
   const [subStartDate, setSubStartDate] = useState<string>("");
   const [savingSub, setSavingSub] = useState(false);
   const [subFormError, setSubFormError] = useState("");
 
-  // Addresses
+  // Vacation Mode State
+  const [vacationFrom, setVacationFrom] = useState("");
+  const [vacationTo, setVacationTo] = useState("");
+  const [savingVacation, setSavingVacation] = useState(false);
+
+  // Addresses State
   const [addresses, setAddresses] = useState<Address[]>([]);
   const [loadingAddresses, setLoadingAddresses] = useState(true);
   const [errorAddresses, setErrorAddresses] = useState("");
@@ -204,13 +184,7 @@ export default function CustomerHome() {
   const [newAddrIsDefault, setNewAddrIsDefault] = useState(false);
   const [savingAddress, setSavingAddress] = useState(false);
 
-  // Per-subscription vacation date range input state
-  const [vacationFromMap, setVacationFromMap] = useState<Record<string, string>>(
-    {}
-  );
-  const [vacationToMap, setVacationToMap] = useState<Record<string, string>>({});
-
-  // Wallet / billing
+  // Wallet State
   const [walletLoading, setWalletLoading] = useState(true);
   const [walletError, setWalletError] = useState("");
   const [walletBalance, setWalletBalance] = useState<number>(0);
@@ -218,1116 +192,663 @@ export default function CustomerHome() {
   const [walletTotalPaid, setWalletTotalPaid] = useState<number>(0);
   const [walletTx, setWalletTx] = useState<WalletTransaction[]>([]);
 
+  // UI State
   const [toastMessage, setToastMessage] = useState("");
-const [toastType, setToastType] = useState<"success" | "error" | "info">("success");
-const showToast = (msg: string, type: "success" | "error" | "info" = "success") => {
-  setToastMessage(msg);
-  setToastType(type);
-};
+  const [toastType, setToastType] = useState<"success" | "error" | "info">("success");
+  const [activeTab, setActiveTab] = useState<string>("products");
+  const [subscribeView, setSubscribeView] = useState<"calendar" | "plans">("calendar");
 
-  const [activeTab, setActiveTab] = useState<
-  "dashboard" | "wallet" | "addresses" | "products" | "subscriptions" | "orders"
->("dashboard");
+  // --- NEW: ONBOARDING STATE ---
+  const [needsOnboarding, setNeedsOnboarding] = useState(false);
+  const [checkingStatus, setCheckingStatus] = useState(true);
 
-const tabs = [
-    { key: "dashboard", label: "Dashboard" },
-    { key: "products", label: "Products" },
-    { key: "subscriptions", label: "Subscriptions" },
-    { key: "orders", label: "Orders" },
-    { key: "wallet", label: "Wallet" },
-    { key: "addresses", label: "Addresses" },
-  ];
-  
-    // ===== Load wallet from transactions only (walletTransactions + billingTransactions) =====
+  // --- NEW: ONBOARDING EFFECT (Respects flags AND Grandfathers legacy users) ---
   useEffect(() => {
-    async function loadWallet() {
-      if (!user || !user.tenantId) {
-        setWalletLoading(false);
+    async function checkUserStatus() {
+      if (authLoading) return;
+      if (!user) {
+        setCheckingStatus(false);
         return;
       }
+      try {
+        const userRef = doc(db, "users", user.uid);
+        const userDoc = await getDoc(userRef);
 
-      setWalletLoading(true);
-      setWalletError("");
+        if (!userDoc.exists()) {
+          // Failsafe: No profile at all
+          setNeedsOnboarding(true);
+        } else {
+          const userData = userDoc.data();
+          
+          // 🌟 THE FIX: Actually check the flag!
+          if (userData.isOnboarded === false) {
+            // It's a new user who hasn't finished the wizard!
+            setNeedsOnboarding(true);
+          } else {
+            // It's either a fully onboarded user (true) OR a legacy user (undefined)
+            setNeedsOnboarding(false); 
+            
+            // Silently update legacy users in the background so they are officially "onboarded"
+            if (userData.isOnboarded === undefined) {
+              updateDoc(userRef, { isOnboarded: true }).catch(() => {});
+            }
+          }
+        }
+      } catch (e) {
+        console.error("Error checking user status:", e);
+      } finally {
+        setCheckingStatus(false);
+      }
+    }
+    checkUserStatus();
+  }, [user, authLoading]);
 
+  // --- Effects (Data Fetching) ---
+  useEffect(() => {
+    async function loadTenantSettings() {
+      if (!user?.tenantId) return;
+      try {
+        const snap = await getDoc(doc(db, "tenants", user.tenantId));
+        if (snap.exists()) {
+          setTenantSettings(snap.data().settings || null);
+          setStoreName(snap.data().name || "Customer App");
+        }
+      } catch (err) { console.error("Failed to load tenant settings", err); }
+    }
+    loadTenantSettings();
+  }, [user]);
+
+  useEffect(() => {
+    async function loadWallet() {
+      if (!user || !user.tenantId) { setWalletLoading(false); return; }
+      setWalletLoading(true); setWalletError("");
       try {
         const allTx: WalletTransaction[] = [];
-        const filters = [
-          where("tenantId", "==", user.tenantId),
-          where("customerId", "==", user.uid),
-        ] as const;
+        const filters = [where("tenantId", "==", user.tenantId), where("customerId", "==", user.uid)] as const;
 
-        // 1) walletTransactions (if present)
         try {
-          const txQ1 = query(
-            collection(db, "tenants", user.tenantId, "walletTransactions"),
-            ...filters
-          );
+          const txQ1 = query(collection(db, "tenants", user.tenantId, "walletTransactions"), ...filters);
           const txSnap1 = await getDocs(txQ1);
           txSnap1.forEach((docSnap) => {
             const data = docSnap.data() as any;
-            const rawType = (data.type || "").toString().toLowerCase();
-            const typeNorm: "debit" | "credit" =
-              rawType === "debit" ? "debit" : "credit";
-
             allTx.push({
-              id: docSnap.id,
-              type: typeNorm,
-              amount: data.amount ?? 0,
-              note: data.note || "",
-              orderId: data.orderId || undefined,
-              createdAt: data.createdAt?.toDate
-                ? data.createdAt.toDate()
-                : undefined,
+              id: docSnap.id, type: (data.type || "").toLowerCase() === "debit" ? "debit" : "credit", amount: data.amount ?? 0,
+              note: data.note || "", orderId: data.orderId || undefined, createdAt: data.createdAt?.toDate ? data.createdAt.toDate() : undefined,
             });
           });
-        } catch (err) {
-          console.warn("walletTransactions query failed", err);
-        }
+        } catch (err) {}
 
-        // 2) billingTransactions (order_charge / payment)
         try {
-          const txQ2 = query(
-            collection(db, "tenants", user.tenantId, "billingTransactions"),
-            ...filters
-          );
+          const txQ2 = query(collection(db, "tenants", user.tenantId, "billingTransactions"), ...filters);
           const txSnap2 = await getDocs(txQ2);
           txSnap2.forEach((docSnap) => {
             const data = docSnap.data() as any;
-            const rawType = (data.type || "").toString().toLowerCase();
-
-            let typeNorm: "debit" | "credit";
-            if (rawType === "order_charge" || rawType === "debit") {
-              typeNorm = "debit";
-            } else {
-              // payment / credit
-              typeNorm = "credit";
-            }
-
+            const rawType = (data.type || "").toLowerCase();
             allTx.push({
-              id: docSnap.id,
-              type: typeNorm,
-              amount: data.amount ?? 0,
-              note: data.note || "",
-              orderId: data.orderId || undefined,
-              createdAt: data.createdAt?.toDate
-                ? data.createdAt.toDate()
-                : undefined,
+              id: docSnap.id, type: (rawType === "order_charge" || rawType === "debit") ? "debit" : "credit", amount: data.amount ?? 0,
+              note: data.note || "", orderId: data.orderId || undefined, createdAt: data.createdAt?.toDate ? data.createdAt.toDate() : undefined,
             });
           });
-        } catch (err) {
-          console.warn("billingTransactions query failed", err);
-        }
+        } catch (err) {}
 
-        // 3) Compute totals from allTx
-        let balance = 0;
-        let totalBilled = 0;
-        let totalPaid = 0;
-
+        let balance = 0; let totalBilled = 0; let totalPaid = 0;
         allTx.forEach((tx) => {
           const amt = typeof tx.amount === "number" ? tx.amount : 0;
-          if (tx.type === "debit") {
-            totalBilled += amt;
-            balance += amt;
-          } else {
-            totalPaid += amt;
-            balance -= amt;
-          }
+          if (tx.type === "debit") { totalBilled += amt; balance += amt; } else { totalPaid += amt; balance -= amt; }
         });
 
-        // 4) Sort and keep last 10
-        allTx.sort(
-          (a, b) =>
-            (b.createdAt?.getTime() ?? 0) - (a.createdAt?.getTime() ?? 0)
-        );
-
-        setWalletBalance(balance);
-        setWalletTotalBilled(totalBilled);
-        setWalletTotalPaid(totalPaid);
-        setWalletTx(allTx.slice(0, 10));
-      } catch (err) {
-        console.error("Error loading wallet for customer", err);
-        setWalletError("Failed to load wallet details.");
-      } finally {
-        setWalletLoading(false);
-      }
+        allTx.sort((a, b) => (b.createdAt?.getTime() ?? 0) - (a.createdAt?.getTime() ?? 0));
+        setWalletBalance(balance); setWalletTotalBilled(totalBilled); setWalletTotalPaid(totalPaid); setWalletTx(allTx.slice(0, 10));
+      } catch (err) { setWalletError("Failed to load wallet."); } finally { setWalletLoading(false); }
     }
-
     void loadWallet();
   }, [user]);
 
-
-  // ===== Load products =====
   useEffect(() => {
     async function loadProducts() {
-      if (!user || !user.tenantId) {
-        setErrorProducts("No store assigned to this customer.");
-        setLoadingProducts(false);
-        return;
+      // 1. Use URL store ID as a fallback if user profile is still loading
+      const activeTenantId = user?.tenantId || resolvedTenant?.id;
+
+      if (!activeTenantId) { 
+        setErrorProducts("No store assigned to this customer."); 
+        setLoadingProducts(false); 
+        return; 
       }
 
+      // 2. Clear any stuck errors before trying to fetch!
+      setErrorProducts("");
+      setLoadingProducts(true);
+
       try {
+        // 3. Removed the redundant where("tenantId") filter which often causes empty results
         const qProd = query(
-          collection(db, "tenants", user.tenantId, "products"),
-          where("tenantId", "==", user.tenantId),
+          collection(db, "tenants", activeTenantId, "products"), 
           where("isActive", "==", true)
         );
+        
         const snap = await getDocs(qProd);
         const list: Product[] = [];
         snap.forEach((docSnap) => {
           const data = docSnap.data() as any;
-          list.push({
-            id: docSnap.id,
-            name: data.name || "",
-            unit: data.unit || "",
-            price: data.price ?? 0,
-            categoryId: data.categoryId || "",
+          list.push({ 
+            id: docSnap.id, 
+            name: data.name || "", 
+            unit: data.unit || "", 
+            price: data.price ?? 0, 
+            categoryId: data.categoryId || "", 
+            imageUrl: data.imageUrl || "",
+            isSubscribable: data.isSubscribable ?? false,
           });
         });
-         console.log("Products loaded:", list);
-        setProducts(list);
-        
         setProducts(list);
 
-        // Load categories
         try {
-          const catSnap = await getDocs(collection(db, "tenants", user.tenantId!, "categories"));
-          const catList: { id: string; name: string }[] = [];
-          catSnap.forEach((docSnap) => {
-            const data = docSnap.data() as any;
-            catList.push({ id: docSnap.id, name: data.name || "" });
-          });
-
-          console.log("Categories loaded:", catList);
+          const catSnap = await getDocs(collection(db, "tenants", activeTenantId, "categories"));
+          const catList: { id: string; name: string; sortOrder: number }[] = [];
+          catSnap.forEach((docSnap) => { const data = docSnap.data() as any; catList.push({ id: docSnap.id, name: data.name || "", sortOrder: data.sortOrder || 0 }); });
           setCategories(catList);
 
-          setCategories(catList);
-        } catch (err) {
-          console.warn("Error loading categories", err);
-        }
-      } catch (err) {
-        console.error("Error loading products for customer", err);
-        setErrorProducts("Failed to load products.");
-      } finally {
-        setLoadingProducts(false);
+          const bannerSnap = await getDocs(query(collection(db, "tenants", activeTenantId, "banners"), where("isActive", "==", true)));
+          const bannerList: { id: string; imageUrl: string }[] = [];
+          bannerSnap.forEach((docSnap) => { bannerList.push({ id: docSnap.id, imageUrl: docSnap.data().imageUrl }); });
+          setBanners(bannerList);
+        } catch (err) {}
+      } catch (err) { 
+        setErrorProducts("Failed to load products."); 
+      } finally { 
+        setLoadingProducts(false); 
       }
     }
-
+    
+    // 4. Run this effect whenever user OR resolvedTenant changes
     void loadProducts();
-  }, [user]);
+  }, [user, resolvedTenant]);
 
-  // ===== Load recent orders =====
   useEffect(() => {
     async function loadOrders() {
-  if (!user || !user.tenantId) {
-    setLoadingOrders(false);
-    return;
-  }
-
+      if (!user || !user.tenantId) { setLoadingOrders(false); return; }
       try {
-        const qOrders = query(
-          collection(db, "tenants", user.tenantId, "orders"),
-          where("customerId", "==", user.uid)
-        );
+        const qOrders = query(collection(db, "tenants", user.tenantId, "orders"), where("customerId", "==", user.uid));
         const snap = await getDocs(qOrders);
         const list: Order[] = [];
         snap.forEach((docSnap) => {
           const data = docSnap.data() as any;
-          list.push({
-            id: docSnap.id,
-            status: data.status || "pending",
-            items: data.items || [],
-            createdAt: data.createdAt?.toDate
-              ? data.createdAt.toDate()
-              : undefined,
-            deliveryAddress: data.deliveryAddress as DeliveryAddress | undefined,
-          });
+          list.push({ id: docSnap.id, status: data.status || "pending", items: data.items || [], createdAt: data.createdAt?.toDate ? data.createdAt.toDate() : undefined, deliveryAddress: data.deliveryAddress, shift: data.shift || "Morning" });
         });
         setOrders(list);
-      } catch (err) {
-        console.error("Error loading orders for customer", err);
-        setErrorOrders("Failed to load recent orders.");
-      } finally {
-        setLoadingOrders(false);
-      }
+      } catch (err) { setErrorOrders("Failed to load orders."); } finally { setLoadingOrders(false); }
     }
-
     void loadOrders();
   }, [user]);
 
-  // ===== Load subscriptions =====
   useEffect(() => {
     async function loadSubscriptions() {
-  if (!user || !user.tenantId) {
-    setLoadingSubs(false);
-    return;
-  }
-
+      if (!user || !user.tenantId) { setLoadingSubs(false); return; }
       try {
-        const qSubs = query(
-          collection(db, "tenants", user.tenantId, "subscriptions"),
-          where("customerId", "==", user.uid)
-        );
+        const qSubs = query(collection(db, "tenants", user.tenantId, "subscriptions"), where("customerId", "==", user.uid));
         const snap = await getDocs(qSubs);
         const list: Subscription[] = [];
         snap.forEach((docSnap) => {
           const data = docSnap.data() as any;
           list.push({
-            id: docSnap.id,
-            productName: data.productName || "",
-            unit: data.unit || "",
-            price: data.price ?? 0,
-            qty: data.qty ?? 1,
-            scheduleType: data.scheduleType || "daily",
-            scheduleDays:
-              (data.scheduleDays as number[] | undefined) ?? undefined,
-            isActive: data.isActive ?? true,
-            dayQuantities:
-              (data.dayQuantities as Record<string, number> | undefined) ??
-              undefined,
-            skipDates:
-              (data.skipDates as string[] | undefined) ?? undefined,
-            vacationFrom:
-              (data.vacationFrom as string | undefined) ?? undefined,
-            vacationTo: (data.vacationTo as string | undefined) ?? undefined,
-            deliveryAddress:
-              (data.deliveryAddress as DeliveryAddress | undefined) ??
-              undefined,
+            id: docSnap.id, productName: data.productName || "", unit: data.unit || "", price: data.price ?? 0, qty: data.qty ?? 1,
+            scheduleType: data.scheduleType || "daily", scheduleDays: data.scheduleDays ?? undefined, isActive: data.isActive ?? true,
+            dayQuantities: data.dayQuantities ?? undefined, skipDates: data.skipDates ?? undefined, vacationFrom: data.vacationFrom ?? undefined, vacationTo: data.vacationTo ?? undefined, deliveryAddress: data.deliveryAddress ?? undefined,
           });
         });
         setSubscriptions(list);
-      } catch (err) {
-        console.error("Error loading subscriptions for customer", err);
-        setErrorSubs("Failed to load subscriptions.");
-      } finally {
-        setLoadingSubs(false);
-      }
+      } catch (err) { setErrorSubs("Failed to load subscriptions."); } finally { setLoadingSubs(false); }
     }
-
     void loadSubscriptions();
   }, [user]);
 
-  async function reloadSubscriptionsForCustomer() {
-  if (!user || !user.tenantId) return;
-    try {
-      const qSubs = query(
-        collection(db, "tenants", user.tenantId, "subscriptions"),
-        where("customerId", "==", user.uid)
-      );
-      const snap = await getDocs(qSubs);
-      const list: Subscription[] = [];
-      snap.forEach((docSnap) => {
-        const data = docSnap.data() as any;
-        list.push({
-          id: docSnap.id,
-          productName: data.productName || "",
-          unit: data.unit || "",
-          price: data.price ?? 0,
-          qty: data.qty ?? 1,
-          scheduleType: data.scheduleType || "daily",
-          scheduleDays:
-            (data.scheduleDays as number[] | undefined) ?? undefined,
-          isActive: data.isActive ?? true,
-          dayQuantities:
-            (data.dayQuantities as Record<string, number> | undefined) ??
-            undefined,
-          skipDates:
-            (data.skipDates as string[] | undefined) ?? undefined,
-          vacationFrom:
-            (data.vacationFrom as string | undefined) ?? undefined,
-          vacationTo: (data.vacationTo as string | undefined) ?? undefined,
-          deliveryAddress:
-            (data.deliveryAddress as DeliveryAddress | undefined) ??
-            undefined,
-        });
-      });
-      setSubscriptions(list);
-    } catch (err) {
-      console.error("Error reloading subscriptions", err);
-    }
-  }
-
-  // ===== Load addresses =====
   useEffect(() => {
     async function loadAddresses() {
-  if (!user || !user.tenantId) {
-    setLoadingAddresses(false);
-    return;
-  }
+      if (!user || !user.tenantId) { setLoadingAddresses(false); return; }
       try {
-        const qAddr = query(
-          collection(db, "tenants", user.tenantId, "addresses"),
-          where("customerId", "==", user.uid)
-        );
+        const qAddr = query(collection(db, "tenants", user.tenantId, "addresses"), where("customerId", "==", user.uid));
         const snap = await getDocs(qAddr);
         const list: Address[] = [];
         snap.forEach((docSnap) => {
           const data = docSnap.data() as any;
-          list.push({
-            id: docSnap.id,
-            label: data.label || "",
-            line1: data.line1 || "",
-            area: data.area || "",
-            city: data.city || "",
-            pincode: data.pincode || "",
-            phone: data.phone || "",
-            mapUrl: data.mapUrl || "",
-            isDefault: data.isDefault ?? false,
-          });
+          list.push({ id: docSnap.id, label: data.label || "", line1: data.line1 || "", area: data.area || "", city: data.city || "", pincode: data.pincode || "", phone: data.phone || "", mapUrl: data.mapUrl || "", isDefault: data.isDefault ?? false });
         });
         setAddresses(list);
-      } catch (err) {
-        console.error("Error loading addresses", err);
-        setErrorAddresses("Failed to load addresses.");
-      } finally {
-        setLoadingAddresses(false);
-      }
+      } catch (err) { setErrorAddresses("Failed to load addresses."); } finally { setLoadingAddresses(false); }
     }
-
     void loadAddresses();
   }, [user]);
 
-  async function reloadAddresses() {
-  if (!user || !user.tenantId) return;
-    try {
-      const qAddr = query(
-        collection(db, "tenants", user.tenantId, "addresses"),
-        where("customerId", "==", user.uid)
-      );
-      const snap = await getDocs(qAddr);
-      const list: Address[] = [];
-      snap.forEach((docSnap) => {
-        const data = docSnap.data() as any;
-        list.push({
-          id: docSnap.id,
-          label: data.label || "",
-          line1: data.line1 || "",
-          area: data.area || "",
-          city: data.city || "",
-          pincode: data.pincode || "",
-          phone: data.phone || "",
-          mapUrl: data.mapUrl || "",
-          isDefault: data.isDefault ?? false,
-        });
+
+  // =========================================================================
+  // 2. THE BOUNCER LOGIC (The Interceptors)
+  // =========================================================================
+  
+  if (tenantLoading || authLoading || checkingStatus) { // MODIFIED: Added auth checks
+    return <div style={{ padding: 40, textAlign: "center", marginTop: 50 }}>Loading Storefront...</div>;
+  }
+
+  if (tenantError || !resolvedTenant) {
+    return <div style={{ padding: 40, textAlign: "center", color: "#dc2626", marginTop: 50 }}>Store not found. Please check the URL.</div>;
+  }
+
+  if (!user) {
+  return (
+    <CustomerAuth 
+      tenantId={resolvedTenant.id} // <--- Ensure this is being passed!
+      tenantName={resolvedTenant.name} 
+      onSuccess={() => window.location.reload()} 
+    />
+  );
+}
+
+  // --- NEW: ONBOARDING INTERCEPTOR ---
+  if (needsOnboarding) {
+    return <CustomerOnboarding onComplete={() => setNeedsOnboarding(false)} />;
+  }
+
+  // =========================================================================
+  // 3. NORMAL FUNCTIONS & EVENT HANDLERS
+  // =========================================================================
+  
+  const showToast = (msg: string, type: "success" | "error" | "info" = "success") => {
+    setToastMessage(msg); setToastType(type);
+  };
+
+  async function reloadSubscriptionsForCustomer() {
+    if (!user || !user.tenantId) return;
+    const qSubs = query(collection(db, "tenants", user.tenantId, "subscriptions"), where("customerId", "==", user.uid));
+    const snap = await getDocs(qSubs);
+    const list: Subscription[] = [];
+    snap.forEach((docSnap) => {
+      const data = docSnap.data() as any;
+      list.push({
+        id: docSnap.id, productName: data.productName || "", unit: data.unit || "", price: data.price ?? 0, qty: data.qty ?? 1,
+        scheduleType: data.scheduleType || "daily", scheduleDays: data.scheduleDays ?? undefined, isActive: data.isActive ?? true,
+        dayQuantities: data.dayQuantities ?? undefined, skipDates: data.skipDates ?? undefined, vacationFrom: data.vacationFrom ?? undefined, vacationTo: data.vacationTo ?? undefined, deliveryAddress: data.deliveryAddress ?? undefined,
       });
-      setAddresses(list);
-    } catch (err) {
-      console.error("Error reloading addresses", err);
-    }
+    });
+    setSubscriptions(list);
   }
 
-  function getDefaultAddress(): Address | undefined {
-    const def = addresses.find((a) => a.isDefault);
-    if (def) return def;
-    return addresses[0];
+  async function reloadAddresses() {
+    if (!user || !user.tenantId) return;
+    const qAddr = query(collection(db, "tenants", user.tenantId, "addresses"), where("customerId", "==", user.uid));
+    const snap = await getDocs(qAddr);
+    const list: Address[] = [];
+    snap.forEach((docSnap) => {
+      const data = docSnap.data() as any;
+      list.push({ id: docSnap.id, label: data.label || "", line1: data.line1 || "", area: data.area || "", city: data.city || "", pincode: data.pincode || "", phone: data.phone || "", mapUrl: data.mapUrl || "", isDefault: data.isDefault ?? false });
+    });
+    setAddresses(list);
   }
 
-  // ===== Handlers =====
+  // User Handlers
+  async function handleUpdateProfile(updates: { name: string; phone: string }) {
+    if (!user) return;
+    try {
+      await updateDoc(doc(db, "users", user.uid), { ...updates, updatedAt: serverTimestamp() });
+      showToast("Profile updated successfully!");
+    } catch (err) { showToast("Failed to update profile.", "error"); }
+  }
 
+  async function handleLogout() {
+    try { await signOut(auth); } catch (error) { showToast("Failed to logout.", "error"); }
+  }
+
+  // Address Handlers
   async function handleAddAddress(e: React.FormEvent) {
     e.preventDefault();
     if (!user) return;
-
-    if (!newAddrLabel.trim() || !newAddrLine1.trim()) {
-      setErrorAddresses("Please fill at least label and address line.");
-      return;
-    }
-
-    setSavingAddress(true);
-    setErrorAddresses("");
-
+    if (!newAddrLabel.trim() || !newAddrLine1.trim()) { setErrorAddresses("Please fill at least label and address line."); return; }
+    setSavingAddress(true); setErrorAddresses("");
     try {
       await addDoc(collection(db, "tenants", user.tenantId!, "addresses"), {
-        customerId: user.uid,
-        tenantId: user.tenantId ?? null,
-        label: newAddrLabel.trim(),
-        line1: newAddrLine1.trim(),
-        area: newAddrArea.trim(),
-        city: newAddrCity.trim(),
-        pincode: newAddrPincode.trim(),
-        phone: newAddrPhone.trim(),
-        mapUrl: newAddrMapUrl.trim(),
-        isDefault: newAddrIsDefault,
-        createdAt: serverTimestamp(),
+        customerId: user.uid, tenantId: user.tenantId ?? null, label: newAddrLabel.trim(), line1: newAddrLine1.trim(), area: newAddrArea.trim(), city: newAddrCity.trim(), pincode: newAddrPincode.trim(), phone: newAddrPhone.trim(), mapUrl: newAddrMapUrl.trim(), isDefault: newAddrIsDefault, createdAt: serverTimestamp(),
       });
-
-      setNewAddrLabel("");
-      setNewAddrLine1("");
-      setNewAddrArea("");
-      setNewAddrCity("");
-      setNewAddrPincode("");
-      setNewAddrPhone("");
-      setNewAddrMapUrl("");
-      setNewAddrIsDefault(false);
-
+      setNewAddrLabel(""); setNewAddrLine1(""); setNewAddrArea(""); setNewAddrCity(""); setNewAddrPincode(""); setNewAddrPhone(""); setNewAddrMapUrl(""); setNewAddrIsDefault(false);
       await reloadAddresses();
-    } catch (err) {
-      console.error("Error adding address", err);
-      setErrorAddresses("Failed to add address.");
-    } finally {
-      setSavingAddress(false);
-    }
+    } catch (err) { setErrorAddresses("Failed to add address."); } finally { setSavingAddress(false); }
   }
 
   async function handleSetDefaultAddress(addressId: string) {
     if (!user) return;
     try {
-      const ref = doc(db, "tenants", user.tenantId!, "addresses", addressId);
-      await updateDoc(ref, {
-        isDefault: true,
-        updatedAt: serverTimestamp(),
-      });
+      await updateDoc(doc(db, "tenants", user.tenantId!, "addresses", addressId), { isDefault: true, updatedAt: serverTimestamp() });
       await reloadAddresses();
-    } catch (err) {
-      console.error("Error setting default address", err);
-      showToast("Failed to set default address.", "error");
-    }
+    } catch (err) { showToast("Failed to set default address.", "error"); }
   }
 
-  async function handleOrderOnce(product: Product) {
+  // Vacation Handlers
+  async function handleSetVacation(e: React.FormEvent) {
+    e.preventDefault();
     if (!user || !user.tenantId) return;
-    setPlacingOrderId(product.id);
-    setErrorOrders("");
-
-    const addr = getDefaultAddress();
-    const deliveryAddress = addr
-      ? {
-          label: addr.label,
-          line1: addr.line1,
-          area: addr.area || "",
-          city: addr.city || "",
-          pincode: addr.pincode || "",
-          phone: addr.phone || "",
-          mapUrl: addr.mapUrl || "",
-        }
-      : undefined;
-
+    if (!vacationFrom || !vacationTo) { showToast("Please select both dates.", "error"); return; }
+    if (vacationFrom > vacationTo) { showToast("End date must be after start date.", "error"); return; }
+    setSavingVacation(true);
     try {
-      let routeName = "";
-
-const assignRef = doc(
-  db,
-  "tenants", user.tenantId,
-  "customerAssignments",
-  `${user.tenantId}_${user.uid}`
-);
-
-const assignSnap = await getDoc(assignRef);
-
-if (assignSnap.exists()) {
-  const data = assignSnap.data() as any;
-  routeName = data.routeName || "";
-}
-      await addDoc(collection(db, "tenants", user.tenantId, "orders"), {
-  tenantId: user.tenantId,
-  customerId: user.uid,
-  routeName: routeName,
-  status: "pending",
-  createdAt: serverTimestamp(),
-  source: "one_time",
-  items: [
-    {
-      productId: product.id,
-      name: product.name,
-      unit: product.unit,
-      price: product.price,
-      qty: 1,
-    },
-  ],
-  deliveryAddress: deliveryAddress ?? null,
-});
-      // Reload recent orders
-      const qOrders = query(
-        collection(db, "tenants", user.tenantId, "orders"),
-        where("customerId", "==", user.uid)
-      );
-      const snap = await getDocs(qOrders);
-      const list: Order[] = [];
-      snap.forEach((docSnap) => {
-        const data = docSnap.data() as any;
-        list.push({
-          id: docSnap.id,
-          status: data.status || "pending",
-          items: data.items || [],
-          createdAt: data.createdAt?.toDate
-            ? data.createdAt.toDate()
-            : undefined,
-          deliveryAddress: data.deliveryAddress as DeliveryAddress | undefined,
-        });
-      });
-      setOrders(list);
-      showToast("Order placed successfully!");
-    } catch (err) {
-      console.error("Error placing order", err);
-      setErrorOrders("Failed to place order.");
-    } finally {
-      setPlacingOrderId(null);
-    }
+      const promises = subscriptions.map(sub => updateDoc(doc(db, "tenants", user.tenantId!, "subscriptions", sub.id), { vacationFrom, vacationTo, updatedAt: serverTimestamp() }));
+      await Promise.all(promises);
+      await reloadSubscriptionsForCustomer();
+      setVacationFrom(""); setVacationTo("");
+      showToast("🌴 Vacation mode activated successfully!");
+    } catch(err) { showToast("Failed to set vacation.", "error"); } finally { setSavingVacation(false); }
   }
 
+  async function handleClearVacation() {
+    if (!user || !user.tenantId) return;
+    setSavingVacation(true);
+    try {
+      const promises = subscriptions.map(sub => updateDoc(doc(db, "tenants", user.tenantId!, "subscriptions", sub.id), { vacationFrom: null, vacationTo: null, updatedAt: serverTimestamp() }));
+      await Promise.all(promises);
+      await reloadSubscriptionsForCustomer();
+      showToast("Welcome back! Deliveries resumed.");
+    } catch(err) { showToast("Failed to clear vacation.", "error"); } finally { setSavingVacation(false); }
+  }
+
+  // Subscription Handlers
   function startSubscription(product: Product) {
-    setSubProduct(product);
-    setSubQty("1");
-    setSubSchedule("daily");
-    setSubCustomDays([]);
-    setSubDayQuantities({});
-    setSubAddressId("");
-    setSubStartDate("");
-    setSubFormError("");
-    // scroll to form
-    setTimeout(() => {
-      document.getElementById("sub-form")?.scrollIntoView({ behavior: "smooth" });
-    }, 100);
+    setSubProduct(product); setSubQty("1"); setSubSchedule("daily"); setSubCustomDays([]); setSubDayQuantities({}); setSubAddressId(""); setSubStartDate(""); setSubFormError("");
+    setTimeout(() => { document.getElementById("sub-form")?.scrollIntoView({ behavior: "smooth" }); }, 100);
   }
 
   function toggleCustomDay(dayIndex: number) {
-    setSubCustomDays((prev) =>
-      prev.includes(dayIndex)
-        ? prev.filter((d) => d !== dayIndex)
-        : [...prev, dayIndex]
-    );
+    setSubCustomDays((prev) => prev.includes(dayIndex) ? prev.filter((d) => d !== dayIndex) : [...prev, dayIndex]);
   }
 
   function setDayQuantityInput(dayIndex: number, value: string) {
-    setSubDayQuantities((prev) => ({
-      ...prev,
-      [dayIndex]: value,
-    }));
+    setSubDayQuantities((prev) => ({ ...prev, [dayIndex]: value }));
   }
 
   async function handleCreateSubscription(e: React.FormEvent) {
     e.preventDefault();
     if (!user || !user.tenantId || !subProduct) return;
-
-    if (!subQty.trim()) {
-      setSubFormError("Please enter quantity.");
-      return;
-    }
-
+    if (!subQty.trim()) { setSubFormError("Please enter quantity."); return; }
     const qtyNumber = Number(subQty);
-    if (Number.isNaN(qtyNumber) || qtyNumber <= 0) {
-      setSubFormError("Quantity must be a positive number.");
-      return;
-    }
-
-    if (subSchedule === "custom" && subCustomDays.length === 0) {
-      setSubFormError("Please select at least one day for custom schedule.");
-      return;
-    }
-
-    if (!subAddressId) {
-      setSubFormError("Please select a delivery address.");
-      return;
-    }
+    if (Number.isNaN(qtyNumber) || qtyNumber <= 0) { setSubFormError("Quantity must be a positive number."); return; }
+    if (subSchedule === "custom" && subCustomDays.length === 0) { setSubFormError("Please select at least one day for custom schedule."); return; }
+    if (!subAddressId) { setSubFormError("Please select a delivery address."); return; }
 
     const selectedAddress = addresses.find((a) => a.id === subAddressId);
-    if (!selectedAddress) {
-      setSubFormError("Selected address not found.");
-      return;
-    }
+    if (!selectedAddress) { setSubFormError("Selected address not found."); return; }
 
-    const deliveryAddress: DeliveryAddress = {
-      label: selectedAddress.label,
-      line1: selectedAddress.line1,
-      area: selectedAddress.area || "",
-      city: selectedAddress.city || "",
-      pincode: selectedAddress.pincode || "",
-      phone: selectedAddress.phone || "",
-      mapUrl: selectedAddress.mapUrl || "",
-    };
-
-    // Build dayQuantities overrides
     const dayQuantities: Record<string, number> = {};
     Object.entries(subDayQuantities).forEach(([dayIndexStr, val]) => {
       const v = (val ?? "").trim();
       if (!v) return;
       const num = Number(v);
-      if (!Number.isNaN(num) && num > 0) {
-        dayQuantities[String(dayIndexStr)] = num;
-      }
+      if (!Number.isNaN(num) && num > 0) { dayQuantities[String(dayIndexStr)] = num; }
     });
 
-    setSavingSub(true);
-    setSubFormError("");
+    setSavingSub(true); setSubFormError("");
     try {
-      const startDateValue = subStartDate
-        ? new Date(subStartDate)
-        : new Date();
-
+      const startDateValue = subStartDate ? new Date(subStartDate) : new Date();
       const baseData: any = {
-        tenantId: user.tenantId,
-        customerId: user.uid,
-        productId: subProduct.id,
-        productName: subProduct.name,
-        unit: subProduct.unit,
-        price: subProduct.price,
-        qty: qtyNumber,
-        scheduleType: subSchedule,
-        isActive: true,
-        createdAt: serverTimestamp(),
-        startDate: startDateValue,
-        deliveryAddress,
+        tenantId: user.tenantId, customerId: user.uid, productId: subProduct.id, productName: subProduct.name, unit: subProduct.unit,
+        price: subProduct.price, qty: qtyNumber, scheduleType: subSchedule, isActive: true, createdAt: serverTimestamp(), startDate: startDateValue, deliveryAddress: { label: selectedAddress.label, line1: selectedAddress.line1, area: selectedAddress.area || "", city: selectedAddress.city || "", pincode: selectedAddress.pincode || "", phone: selectedAddress.phone || "", mapUrl: selectedAddress.mapUrl || "" },
       };
-
-      if (subSchedule === "custom") {
-        baseData.scheduleDays = subCustomDays;
-      }
-
-      if (Object.keys(dayQuantities).length > 0) {
-        baseData.dayQuantities = dayQuantities;
-      }
+      if (subSchedule === "custom") { baseData.scheduleDays = subCustomDays; }
+      if (Object.keys(dayQuantities).length > 0) { baseData.dayQuantities = dayQuantities; }
 
       await addDoc(collection(db, "tenants", user.tenantId, "subscriptions"), baseData);
-
-      // Clear form
-      setSubProduct(null);
-      setSubQty("1");
-      setSubSchedule("daily");
-      setSubCustomDays([]);
-      setSubDayQuantities({});
-      setSubAddressId("");
-      setSubStartDate("");
-
-      // Reload subscriptions
+      setSubProduct(null); setSubQty("1"); setSubSchedule("daily"); setSubCustomDays([]); setSubDayQuantities({}); setSubAddressId(""); setSubStartDate("");
       await reloadSubscriptionsForCustomer();
       showToast("Subscription created successfully!");
-    } catch (err) {
-      console.error("Error creating subscription", err);
-      setSubFormError("Failed to create subscription.");
-    } finally {
-      setSavingSub(false);
-    }
+    } catch (err) { setSubFormError("Failed to create subscription."); } finally { setSavingSub(false); }
+  }
+
+  function isPastCutoffTime(): boolean {
+    if (!tenantSettings?.operations?.customerCutoffTime) return false; 
+    const cutoffTime = tenantSettings.operations.customerCutoffTime; 
+    const [cutoffHour, cutoffMin] = cutoffTime.split(":").map(Number);
+    const now = new Date(); const currentHour = now.getHours(); const currentMin = now.getMinutes();
+    return (currentHour > cutoffHour || (currentHour === cutoffHour && currentMin >= cutoffMin));
   }
 
   async function toggleSubscriptionActive(sub: Subscription) {
     if (!user) return;
-    if (isPastCutoffTime()) {
-      showToast("Cutoff time passed. Please contact the store manager for assistance to pause or resume your subscription.", "error");
-      return;
-    }
+    if (isPastCutoffTime()) { showToast("Cutoff time passed. Please contact the store manager for assistance.", "error"); return; }
     try {
-      const ref = doc(db, "tenants", user.tenantId!, "subscriptions", sub.id);
-      await updateDoc(ref, {
-        isActive: !sub.isActive,
-        updatedAt: serverTimestamp(),
-      });
+      await updateDoc(doc(db, "tenants", user.tenantId!, "subscriptions", sub.id), { isActive: !sub.isActive, updatedAt: serverTimestamp() });
       await reloadSubscriptionsForCustomer();
-    } catch (err) {
-      console.error("Error updating subscription status", err);
-      showToast("Failed to update subscription.", "error");
-    }
+    } catch (err) { showToast("Failed to update subscription.", "error"); }
   }
 
-  // ===== Cutoff Time Check =====
-  function isPastCutoffTime(): boolean {
-    if (!tenantSettings?.operations?.customerCutoffTime) return false; // If shop owner didn't set a time, allow it
-    
-    const cutoffTime = tenantSettings.operations.customerCutoffTime; // e.g., "22:00"
-    const [cutoffHour, cutoffMin] = cutoffTime.split(":").map(Number);
-
-    const now = new Date();
-    const currentHour = now.getHours();
-    const currentMin = now.getMinutes();
-
-    if (currentHour > cutoffHour || (currentHour === cutoffHour && currentMin >= cutoffMin)) {
-      return true;
-    }
-    return false;
-  }
-  
-  async function handleSkipTomorrow(sub: Subscription) {
-    if (!user) return;
-    if (isPastCutoffTime()) {
-      showToast("Cutoff time passed. Please contact the store manager for assistance to modify tomorrow's delivery.", "error");
-      return;
-    }
-    const tomorrow = new Date();
-tomorrow.setDate(tomorrow.getDate() + 1);
-const dateStr = tomorrow.toLocaleDateString('en-CA');
-
-    const existing = sub.skipDates ?? [];
-    if (existing.includes(dateStr)) {
-      showToast("Tomorrow is already skipped.", "info");
-      return;
-    }
-
+  async function handleToggleSkipDate(sub: Subscription, dateStr: string) {
+    if (!user || !user.tenantId) return;
+    if (isPastCutoffTime() && dateStr === new Date(Date.now() + 86400000).toLocaleDateString('en-CA')) { showToast("Cutoff time passed for tomorrow's delivery change.", "error"); return; }
+    const existingSkips = sub.skipDates ?? [];
+    const newSkips = existingSkips.includes(dateStr) ? existingSkips.filter(d => d !== dateStr) : [...existingSkips, dateStr];
     try {
-      const ref = doc(db, "tenants", user.tenantId!, "subscriptions", sub.id);
-      await updateDoc(ref, {
-        skipDates: [...existing, dateStr],
-        updatedAt: serverTimestamp(),
-      });
+      await updateDoc(doc(db, "tenants", user.tenantId, "subscriptions", sub.id), { skipDates: newSkips, updatedAt: serverTimestamp() });
       await reloadSubscriptionsForCustomer();
-      showToast("Tomorrow skipped successfully!");
-    } catch (err) {
-      console.error("Error skipping tomorrow", err);
-      showToast("Failed to skip tomorrow.", "error");
-    }
+      showToast(existingSkips.includes(dateStr) ? `Resumed delivery for ${dateStr}` : `Skipped delivery for ${dateStr}`);
+    } catch (err) { showToast("Failed to update date.", "error"); }
   }
 
-  async function handleSetVacationRange(
-    sub: Subscription,
-    from: string,
-    to: string
-  ) {
-    if (!user) return;
-    if (!from || !to) {
-      showToast("Please select both start and end dates.", "error");
-      return;
-    }
-    if (to < from) {
-      showToast("End date must be after start date.", "error");
-      return;
-    }
+  // Cart & Checkout Handlers
+  const updateCartQty = (product: any, delta: number) => {
+    setCart((prev) => {
+      const currentQty = prev[product.id] || 0;
+      const newQty = Math.max(0, currentQty + delta);
+      const newCart = { ...prev };
+      if (newQty === 0) delete newCart[product.id];
+      else newCart[product.id] = newQty;
+      return newCart;
+    });
+  };
 
+  const handleCheckout = async (overrideAddressId?: string) => {
+    if (cartItemsCount === 0 || !user || !user.tenantId) return;
+    const selectedAddress = overrideAddressId ? addresses.find(a => a.id === overrideAddressId) : (addresses.find(a => a.isDefault) || addresses[0]);
+    if (!selectedAddress) { showToast("Please add a delivery address in your Profile first!", "error"); setActiveTab("profile"); return; }
+    setIsCheckingOut(true);
     try {
-      const ref = doc(db, "tenants", user.tenantId!, "subscriptions", sub.id);
-      await updateDoc(ref, {
-        vacationFrom: from,
-        vacationTo: to,
-        updatedAt: serverTimestamp(),
+      const orderItems = Object.entries(cart).map(([productId, qty]) => {
+        const p = products.find(x => x.id === productId);
+        return { productId, name: p?.name || "Unknown Item", price: p?.price || 0, qty };
       });
-      await reloadSubscriptionsForCustomer();
-      showToast("Vacation dates saved!");
-    } catch (err) {
-      console.error("Error setting vacation range", err);
-      showToast("Failed to save vacation dates.", "error");
-    }
-  }
+      await addDoc(collection(db, "tenants", user.tenantId, "orders"), {
+        tenantId: user.tenantId, customerId: user.uid, customerName: user.name || "Customer", items: orderItems, totalAmount: cartTotal, status: "pending", type: "one-time", shift: checkoutShift, date: new Date().toISOString().split('T')[0], createdAt: serverTimestamp(), deliveryAddress: { label: selectedAddress.label, line1: selectedAddress.line1, area: selectedAddress.area || "", city: selectedAddress.city || "", pincode: selectedAddress.pincode || "", phone: selectedAddress.phone || "", mapUrl: selectedAddress.mapUrl || "" }
+      });
+      setCart({}); showToast("🎉 Order placed successfully!"); setActiveTab("orders");
+    } catch (error) { showToast("Failed to place order. Please try again.", "error"); } finally { setIsCheckingOut(false); }
+  };
 
+  // Derived Values
+  const cartItemsCount = Object.values(cart).reduce((sum, qty) => sum + qty, 0);
+  const cartTotal = Object.entries(cart).reduce((sum, [productId, qty]) => { const p = products.find(p => p.id === productId); return sum + (p ? p.price * qty : 0); }, 0);
   const activeSubs = subscriptions.filter((s) => s.isActive);
   const pausedSubs = subscriptions.filter((s) => !s.isActive);
+  const activeVacationSub = subscriptions.find(s => s.vacationFrom && s.vacationTo);
 
+  // =========================================================================
+  // 4. RENDER UI
+  // =========================================================================
   return (
-  <AppLayout
-  
-    tabs={tabs}
-    activeTab={activeTab}
-    setActiveTab={setActiveTab}
-  >
-    {toastMessage && (
-        <Toast
-          message={toastMessage}
-          type={toastType}
-          onClose={() => setToastMessage("")}
-        />
-      )}
-      <TopBar title="Customer App" />
-      <div style={{ padding: 16 }}>
+    <div style={{ background: "#e5e7eb", height: "100vh", overflow: "hidden", display: "flex", justifyContent: "center" }}>
+      {toastMessage && <Toast message={toastMessage} type={toastType} onClose={() => setToastMessage("")} />}
+      
+      <div style={{ width: "100%", maxWidth: 480, background: "#f9fafb", display: "flex", flexDirection: "column", position: "relative", height: "100%", boxShadow: "0 0 40px rgba(0,0,0,0.1)" }}>
 
-{activeTab === "dashboard" && (
-  <DashboardTab
-    walletBalance={walletBalance}
-    activeSubscriptions={activeSubs.length}
-    totalOrders={orders.length}
-  />
-)}
-        {/* Wallet / Billing summary */}
-        {activeTab === "wallet" && (
-  <WalletTab
-    walletLoading={walletLoading}
-    walletError={walletError}
-    walletBalance={walletBalance}
-    walletTotalBilled={walletTotalBilled}
-    walletTotalPaid={walletTotalPaid}
-    walletTx={walletTx}
-  />
-)}
-        {/* Addresses section */}
-        {activeTab === "addresses" && (
-  <AddressesTab
-    loadingAddresses={loadingAddresses}
-    errorAddresses={errorAddresses}
-    addresses={addresses}
-
-    newAddrLabel={newAddrLabel}
-    newAddrLine1={newAddrLine1}
-    newAddrArea={newAddrArea}
-    newAddrCity={newAddrCity}
-    newAddrPincode={newAddrPincode}
-    newAddrPhone={newAddrPhone}
-    newAddrMapUrl={newAddrMapUrl}
-    newAddrIsDefault={newAddrIsDefault}
-
-    setNewAddrLabel={setNewAddrLabel}
-    setNewAddrLine1={setNewAddrLine1}
-    setNewAddrArea={setNewAddrArea}
-    setNewAddrCity={setNewAddrCity}
-    setNewAddrPincode={setNewAddrPincode}
-    setNewAddrPhone={setNewAddrPhone}
-    setNewAddrMapUrl={setNewAddrMapUrl}
-    setNewAddrIsDefault={setNewAddrIsDefault}
-
-    handleAddAddress={handleAddAddress}
-    handleSetDefaultAddress={handleSetDefaultAddress}
-
-    savingAddress={savingAddress}
-  />
-)}
-        
-        {/* Products section */}
-        {activeTab === "products" && (
-  <ProductsTab
-    products={products}
-    categories={categories}
-    loadingProducts={loadingProducts}
-    errorProducts={errorProducts}
-    placingOrderId={placingOrderId}
-    handleOrderOnce={handleOrderOnce}
-    startSubscription={startSubscription}
-  />
-)}
-       
-        {/* Subscription form */}
-        
-        {subProduct && activeTab === "products" && (
-          <section
-            id="sub-form"
-            style={{
-              marginTop: 24,
-              padding: 20,
-              borderRadius: 12,
-              border: "1px solid #e0e0e0",
-              background: "#fff",
-            }}
-          >
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-              <h2 style={{ margin: 0 }}>Create Subscription</h2>
-              <button
-                onClick={() => setSubProduct(null)}
-                style={{ background: "none", border: "none", fontSize: 20, cursor: "pointer", color: "#666" }}
-              >
-                ✕
-              </button>
+        {/* TOP HEADER BAR */}
+        <div style={{ background: "#fff", padding: "16px 20px", display: "flex", justifyContent: "space-between", alignItems: "center", position: "sticky", top: 0, zIndex: 10, boxShadow: "0 1px 3px rgba(0,0,0,0.05)" }}>
+          <div>
+            <div style={{ fontSize: 11, color: "#6b7280", fontWeight: 600, textTransform: "uppercase", letterSpacing: 0.5 }}>{storeName}</div>
+            <div style={{ fontSize: 14, fontWeight: 700, color: "#111827", display: "flex", alignItems: "center", gap: 4 }}>
+              {user?.name || "Customer"} <span style={{ fontSize: 10, color: "#2563eb" }}>▼</span>
             </div>
+          </div>
+          
+          {/* UPDATED WALLET PILL */}
+          <div onClick={() => setActiveTab("wallet")} style={{ background: walletBalance > 0 ? "#fef2f2" : walletBalance < 0 ? "#dcfce7" : "#eff6ff", padding: "6px 12px", borderRadius: 16, fontSize: 13, fontWeight: 800, color: walletBalance > 0 ? "#dc2626" : walletBalance < 0 ? "#16a34a" : "#2563eb", border: walletBalance > 0 ? "1px solid #fecaca" : walletBalance < 0 ? "1px solid #bbf7d0" : "1px solid #bfdbfe", cursor: "pointer", boxShadow: "0 2px 4px rgba(0,0,0,0.02)" }}>
+            {walletBalance > 0 
+              ? `-₹${walletBalance.toFixed(2)} Due` 
+              : walletBalance < 0 
+                ? `₹${Math.abs(walletBalance).toFixed(2)} Cr` 
+                : `₹0.00`}
+          </div>
+          
+        </div>
 
-            <p style={{ marginTop: 8 }}>
-              Product: <strong>{subProduct.name}</strong> ({subProduct.unit}) – ₹{subProduct.price}
-            </p>
-
-            <form
-              onSubmit={handleCreateSubscription}
-              style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, alignItems: "start", marginTop: 12 }}
-            >
-              {/* Start Date */}
-              <div>
-                <label style={{ fontSize: 13, display: "block", marginBottom: 4 }}>Start Date</label>
-                <input
-                  type="date"
-                  style={{ width: "100%", padding: 8 }}
-                  value={subStartDate}
-                  min={new Date().toISOString().slice(0, 10)}
-                  onChange={(e) => setSubStartDate(e.target.value)}
-                />
-              </div>
-
-              {/* Schedule */}
-              <div>
-                <label style={{ fontSize: 13, display: "block", marginBottom: 4 }}>Schedule</label>
-                <select
-                  style={{ width: "100%", padding: 8 }}
-                  value={subSchedule}
-                  onChange={(e) => {
-                    setSubSchedule(e.target.value);
-                    setSubDayQuantities({});
-                    setSubCustomDays([]);
-                  }}
-                >
-                  <option value="daily">Daily</option>
-                  <option value="alternate_days">Alternate days</option>
-                  <option value="mon_fri">Mon to Friday</option>
-                  <option value="weekends">Weekends</option>
-                  <option value="custom">Custom days</option>
-                </select>
-              </div>
-
-              {/* Base Qty — only for daily and alternate_days */}
-              {(subSchedule === "daily" || subSchedule === "alternate_days") && (
-                <div>
-                  <label style={{ fontSize: 13, display: "block", marginBottom: 4 }}>Quantity per day</label>
-                  <input
-                    style={{ width: "100%", padding: 8 }}
-                    value={subQty}
-                    onChange={(e) => setSubQty(e.target.value)}
-                  />
+        {/* SCROLLABLE CONTENT AREA */}
+        <div style={{ flex: 1, overflowY: "auto", paddingBottom: 100 }}>
+          
+          {(activeTab === "products" || activeTab === "dashboard") && (
+            <div style={{ padding: "0 0 20px 0" }}>
+              <ProductsTab products={products} categories={categories} banners={banners} loadingProducts={loadingProducts} errorProducts={errorProducts} cart={cart} updateCartQty={updateCartQty} startSubscription={startSubscription} />
+              
+              {cartItemsCount > 0 && (
+                <div style={{ position: "fixed", bottom: 80, left: 0, right: 0, margin: "0 auto", maxWidth: 448, padding: "0 16px", zIndex: 50 }}>
+                  <div onClick={() => setActiveTab("cart")} style={{ background: "#2563eb", color: "#fff", borderRadius: 12, padding: "14px 16px", display: "flex", justifyContent: "space-between", alignItems: "center", boxShadow: "0 4px 12px rgba(37, 99, 235, 0.3)", cursor: "pointer" }}>
+                    <div style={{ display: "flex", flexDirection: "column" }}><span style={{ fontSize: 12, opacity: 0.9, fontWeight: 500 }}>{cartItemsCount} ITEMS</span><span style={{ fontSize: 16, fontWeight: 700 }}>₹{cartTotal}</span></div>
+                    <div style={{ display: "flex", alignItems: "center", gap: 8, fontWeight: 700, fontSize: 15 }}>View Cart <span>➔</span></div>
+                  </div>
                 </div>
               )}
 
-              {/* Custom days selector */}
-              {subSchedule === "custom" && (
-                <div style={{ gridColumn: "1 / span 2", marginTop: 8 }}>
-                  <label style={{ fontSize: 13, display: "block", marginBottom: 4 }}>Select days & quantity:</label>
-                  <div style={{ display: "flex", flexWrap: "wrap", gap: 12, marginTop: 4 }}>
-                    {DAY_LABELS.map((label, index) => (
-                      <div key={index} style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 4 }}>
-                        <label
-                          style={{
-                            border: "1px solid #ccc",
-                            borderRadius: 16,
-                            padding: "4px 10px",
-                            cursor: "pointer",
-                            backgroundColor: subCustomDays.includes(index) ? "#111827" : "#fff",
-                            color: subCustomDays.includes(index) ? "#fff" : "#111",
-                            fontSize: 13,
-                            userSelect: "none",
-                          }}
-                        >
-                          <input
-                            type="checkbox"
-                            checked={subCustomDays.includes(index)}
-                            onChange={() => toggleCustomDay(index)}
-                            style={{ display: "none" }}
-                          />
-                          {label}
-                        </label>
-                        {subCustomDays.includes(index) && (
-                          <input
-                            style={{ width: 60, padding: 4, fontSize: 12, textAlign: "center" }}
-                            placeholder="Qty"
-                            value={subDayQuantities[index] ?? ""}
-                            onChange={(e) => setDayQuantityInput(index, e.target.value)}
-                          />
+              {subProduct && (
+                <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.5)", zIndex: 100, display: "flex", alignItems: "flex-end", justifyContent: "center" }}>
+                   <section id="sub-form" style={{ width: "100%", maxWidth: 480, padding: 24, borderRadius: "24px 24px 0 0", background: "#fff", maxHeight: "85vh", overflowY: "auto", boxShadow: "0 -10px 40px rgba(0,0,0,0.2)" }}>
+                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}><h2 style={{ margin: 0, fontSize: 20 }}>Subscribe</h2><button onClick={() => setSubProduct(null)} style={{ background: "#f3f4f6", border: "none", borderRadius: "50%", width: 32, height: 32, fontSize: 16, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", color: "#4b5563" }}>✕</button></div>
+                    <div style={{ background: "#eff6ff", padding: 12, borderRadius: 12, marginBottom: 16 }}><p style={{ margin: 0, color: "#1e3a8a", fontWeight: 600 }}>{subProduct.name} <span style={{ fontWeight: 400 }}>({subProduct.unit})</span></p><p style={{ margin: "4px 0 0 0", color: "#2563eb", fontWeight: 700, fontSize: 16 }}>₹{subProduct.price}</p></div>
+
+                    <form onSubmit={handleCreateSubscription} style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+                      <div style={{ display: "flex", gap: 12 }}>
+                        <div style={{ flex: 1 }}><label style={{ fontSize: 12, fontWeight: 600, color: "#4b5563", display: "block", marginBottom: 6 }}>Start Date</label><input type="date" style={{ width: "100%", padding: 10, borderRadius: 8, border: "1px solid #d1d5db" }} value={subStartDate} min={new Date().toISOString().slice(0, 10)} onChange={(e) => setSubStartDate(e.target.value)} /></div>
+                        <div style={{ flex: 1 }}><label style={{ fontSize: 12, fontWeight: 600, color: "#4b5563", display: "block", marginBottom: 6 }}>Schedule</label><select style={{ width: "100%", padding: 10, borderRadius: 8, border: "1px solid #d1d5db", background: "#fff" }} value={subSchedule} onChange={(e) => { setSubSchedule(e.target.value); setSubDayQuantities({}); setSubCustomDays([]); }}><option value="daily">Daily</option><option value="alternate_days">Alternate days</option><option value="mon_fri">Mon to Friday</option><option value="weekends">Weekends</option><option value="custom">Custom days</option></select></div>
+                      </div>
+
+                      {(subSchedule === "daily" || subSchedule === "alternate_days") && (
+                        <div><label style={{ fontSize: 12, fontWeight: 600, color: "#4b5563", display: "block", marginBottom: 6 }}>Quantity per day</label><input style={{ width: "100%", padding: 10, borderRadius: 8, border: "1px solid #d1d5db" }} value={subQty} onChange={(e) => setSubQty(e.target.value)} /></div>
+                      )}
+
+                      {subSchedule === "custom" && (
+                        <div style={{ background: "#f9fafb", padding: 16, borderRadius: 12, border: "1px solid #e5e7eb" }}>
+                          <label style={{ fontSize: 12, fontWeight: 700, display: "block", marginBottom: 12 }}>Select days & quantity:</label>
+                          <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 12 }}>
+                            {DAY_LABELS.map((label, index) => (
+                              <div key={index} style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+                                <label style={{ border: subCustomDays.includes(index) ? "none" : "1px solid #d1d5db", borderRadius: 8, padding: "8px 0", textAlign: "center", cursor: "pointer", backgroundColor: subCustomDays.includes(index) ? "#111827" : "#fff", color: subCustomDays.includes(index) ? "#fff" : "#4b5563", fontSize: 13, fontWeight: 600 }}>
+                                  <input type="checkbox" checked={subCustomDays.includes(index)} onChange={() => toggleCustomDay(index)} style={{ display: "none" }} />{label}
+                                </label>
+                                {subCustomDays.includes(index) && ( <input style={{ width: "100%", padding: "6px 4px", fontSize: 12, textAlign: "center", borderRadius: 6, border: "1px solid #9ca3af" }} placeholder="Qty" value={subDayQuantities[index] ?? ""} onChange={(e) => setDayQuantityInput(index, e.target.value)} /> )}
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+
+                      {(subSchedule === "mon_fri" || subSchedule === "weekends") && (
+                        <div style={{ background: "#f9fafb", padding: 16, borderRadius: 12, border: "1px solid #e5e7eb" }}>
+                          <label style={{ fontSize: 12, fontWeight: 700, display: "block", marginBottom: 12 }}>Custom Quantity (Optional)</label>
+                          <div style={{ display: "grid", gridTemplateColumns: "repeat(5, 1fr)", gap: 8 }}>
+                            {(subSchedule === "mon_fri" ? [1, 2, 3, 4, 5] : [0, 6]).map((index) => (
+                              <div key={index} style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 4 }}>
+                                <div style={{ fontSize: 12, fontWeight: 600, color: "#4b5563" }}>{DAY_LABELS[index]}</div>
+                                <input style={{ width: "100%", padding: 6, fontSize: 12, textAlign: "center", borderRadius: 6, border: "1px solid #d1d5db" }} placeholder={subQty || "1"} value={subDayQuantities[index] ?? ""} onChange={(e) => setDayQuantityInput(index, e.target.value)} />
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+
+                      <div>
+                        <label style={{ fontSize: 12, fontWeight: 600, color: "#4b5563", display: "block", marginBottom: 6 }}>Delivery address</label>
+                        {addresses.length === 0 ? (
+                          <div style={{ background: "#fef2f2", color: "#dc2626", padding: 12, borderRadius: 8, fontSize: 13, fontWeight: 500 }}>Please add an address in your Profile first.</div>
+                        ) : (
+                          <select style={{ width: "100%", padding: 10, borderRadius: 8, border: "1px solid #d1d5db", background: "#fff" }} value={subAddressId} onChange={(e) => setSubAddressId(e.target.value)}>
+                            <option value="">— Select an address —</option>
+                            {addresses.map((a) => <option key={a.id} value={a.id}>{a.label} – {a.line1}</option>)}
+                          </select>
                         )}
                       </div>
-                    ))}
-                  </div>
+
+                      {subFormError && <div style={{ background: "#fef2f2", color: "#dc2626", padding: 10, borderRadius: 8, fontSize: 13, fontWeight: 600 }}>{subFormError}</div>}
+                      <button type="submit" disabled={savingSub} style={{ padding: "14px", borderRadius: 12, border: "none", background: "#2563eb", color: "#fff", fontWeight: 700, fontSize: 15, marginTop: 8, cursor: savingSub ? "not-allowed" : "pointer", boxShadow: "0 4px 12px rgba(37, 99, 235, 0.2)" }}>{savingSub ? "Processing..." : "Confirm Subscription"}</button>
+                    </form>
+                  </section>
                 </div>
               )}
+            </div>
+          )}
 
-              {/* Mon-Fri qty per day */}
-              {subSchedule === "mon_fri" && (
-                <div style={{ gridColumn: "1 / span 2", marginTop: 8 }}>
-                  <label style={{ fontSize: 13, display: "block", marginBottom: 4 }}>Quantity per day (Mon–Fri):</label>
-                  <div style={{ display: "flex", flexWrap: "wrap", gap: 12, marginTop: 4 }}>
-                    {[1, 2, 3, 4, 5].map((index) => (
-                      <div key={index} style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 4 }}>
-                        <div style={{ fontSize: 13, fontWeight: 500 }}>{DAY_LABELS[index]}</div>
-                        <input
-                          style={{ width: 60, padding: 4, fontSize: 12, textAlign: "center" }}
-                          placeholder={subQty || "1"}
-                          value={subDayQuantities[index] ?? ""}
-                          onChange={(e) => setDayQuantityInput(index, e.target.value)}
-                        />
-                      </div>
-                    ))}
-                  </div>
-                  <div style={{ fontSize: 12, marginTop: 4, color: "#555" }}>Leave blank to use base quantity</div>
+          {activeTab === "cart" && (
+            <CartTab cart={cart} products={products} updateCartQty={updateCartQty} addresses={addresses} checkoutShift={checkoutShift} setCheckoutShift={setCheckoutShift} handleCheckout={handleCheckout} isCheckingOut={isCheckingOut} setActiveTab={setActiveTab} cartTotal={cartTotal} />
+          )}
+
+          {activeTab === "subscriptions" && (
+            <div style={{ display: "flex", flexDirection: "column" }}>
+              <div style={{ padding: "16px 16px 0 16px" }}>
+                <div style={{ display: "flex", background: "#f3f4f6", borderRadius: 12, padding: 4, border: "1px solid #e5e7eb" }}>
+                  <button onClick={() => setSubscribeView("calendar")} style={{ flex: 1, padding: "8px 0", borderRadius: 8, border: "none", background: subscribeView === "calendar" ? "#fff" : "transparent", color: subscribeView === "calendar" ? "#111827" : "#6b7280", fontWeight: 700, fontSize: 13, cursor: "pointer", boxShadow: subscribeView === "calendar" ? "0 2px 4px rgba(0,0,0,0.05)" : "none", transition: "all 0.2s" }}>📅 Calendar</button>
+                  <button onClick={() => setSubscribeView("plans")} style={{ flex: 1, padding: "8px 0", borderRadius: 8, border: "none", background: subscribeView === "plans" ? "#fff" : "transparent", color: subscribeView === "plans" ? "#111827" : "#6b7280", fontWeight: 700, fontSize: 13, cursor: "pointer", boxShadow: subscribeView === "plans" ? "0 2px 4px rgba(0,0,0,0.05)" : "none", transition: "all 0.2s" }}>⚙️ Manage Plans</button>
                 </div>
-              )}
-
-              {/* Weekends qty per day */}
-              {subSchedule === "weekends" && (
-                <div style={{ gridColumn: "1 / span 2", marginTop: 8 }}>
-                  <label style={{ fontSize: 13, display: "block", marginBottom: 4 }}>Quantity per day (Weekends):</label>
-                  <div style={{ display: "flex", flexWrap: "wrap", gap: 12, marginTop: 4 }}>
-                    {[0, 6].map((index) => (
-                      <div key={index} style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 4 }}>
-                        <div style={{ fontSize: 13, fontWeight: 500 }}>{DAY_LABELS[index]}</div>
-                        <input
-                          style={{ width: 60, padding: 4, fontSize: 12, textAlign: "center" }}
-                          placeholder={subQty || "1"}
-                          value={subDayQuantities[index] ?? ""}
-                          onChange={(e) => setDayQuantityInput(index, e.target.value)}
-                        />
-                      </div>
-                    ))}
-                  </div>
-                  <div style={{ fontSize: 12, marginTop: 4, color: "#555" }}>Leave blank to use base quantity</div>
-                </div>
-              )}
-
-              {/* Delivery Address */}
-              <div style={{ gridColumn: "1 / span 2", marginTop: 8 }}>
-                <label style={{ fontSize: 13, display: "block", marginBottom: 4 }}>Delivery address</label>
-                {addresses.length === 0 ? (
-                  <p style={{ fontSize: 13, color: "#e11d48" }}>
-                    Please add an address in the Addresses tab before creating a subscription.
-                  </p>
+              </div>
+              <div>
+                {subscribeView === "calendar" ? (
+                  <DashboardTab walletBalance={walletBalance} activeSubscriptions={activeSubs.length} totalOrders={orders.length} subscriptions={subscriptions} setActiveTab={setActiveTab} handleToggleSkipDate={handleToggleSkipDate} />
                 ) : (
-                  <select
-                    style={{ width: "100%", padding: 8, marginTop: 4 }}
-                    value={subAddressId}
-                    onChange={(e) => setSubAddressId(e.target.value)}
-                  >
-                    <option value="">— Select address —</option>
-                    {addresses.map((a) => (
-                      <option key={a.id} value={a.id}>
-                        {a.label} – {a.line1}{a.area ? `, ${a.area}` : ""}
-                      </option>
-                    ))}
-                  </select>
+                  <SubscriptionsTab 
+  loadingSubs={loadingSubs} 
+  errorSubs={errorSubs} 
+  activeSubs={activeSubs} 
+  pausedSubs={pausedSubs} 
+  toggleSubscriptionActive={toggleSubscriptionActive} 
+  handleToggleSkipDate={handleToggleSkipDate} 
+  formatSchedule={formatSchedule} 
+  
+  // New Vacation Props!
+  vacationFrom={vacationFrom}
+  setVacationFrom={setVacationFrom}
+  vacationTo={vacationTo}
+  setVacationTo={setVacationTo}
+  savingVacation={savingVacation}
+  handleSetVacation={handleSetVacation}
+  handleClearVacation={handleClearVacation}
+  activeVacationSub={activeVacationSub}
+/>
                 )}
               </div>
+            </div>
+          )}
 
-              {subFormError && (
-                <div style={{ gridColumn: "1 / span 2", color: "red", fontSize: 13 }}>
-                  {subFormError}
-                </div>
-              )}
+          {activeTab === "wallet" && (
+            <div>
+              <WalletTab walletLoading={walletLoading} walletError={walletError} walletBalance={walletBalance} walletTotalBilled={walletTotalBilled} walletTotalPaid={walletTotalPaid} walletTx={walletTx} />
+              <div style={{ marginTop: 16, borderTop: "4px solid #f3f4f6" }} />
+              <OrdersTab loadingOrders={loadingOrders} errorOrders={errorOrders} orders={orders} formatAddress={formatAddress} />
+            </div>
+          )}
 
-              <div style={{ gridColumn: "1 / span 2", marginTop: 8, display: "flex", gap: 8 }}>
-                <button
-                  type="submit"
-                  disabled={savingSub}
-                  style={{
-                    padding: "10px 24px",
-                    borderRadius: 8,
-                    border: "none",
-                    background: "#111827",
-                    color: "#fff",
-                    cursor: "pointer",
-                    fontWeight: 500,
-                  }}
-                >
-                  {savingSub ? "Saving..." : "Start Subscription"}
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setSubProduct(null)}
-                  style={{
-                    padding: "10px 24px",
-                    borderRadius: 8,
-                    border: "1px solid #d1d5db",
-                    background: "#fff",
-                    cursor: "pointer",
-                  }}
-                >
-                  Cancel
-                </button>
-              </div>
-            </form>
-          </section>
-        )}
+          {activeTab === "profile" && (
+            <div style={{ padding: 16, display: "flex", flexDirection: "column", gap: 16 }}>
+              <ProfileTab user={user} handleUpdateProfile={handleUpdateProfile} handleLogout={handleLogout} />
+              <AddressesTab loadingAddresses={loadingAddresses} errorAddresses={errorAddresses} addresses={addresses} newAddrLabel={newAddrLabel} newAddrLine1={newAddrLine1} newAddrArea={newAddrArea} newAddrCity={newAddrCity} newAddrPincode={newAddrPincode} newAddrPhone={newAddrPhone} newAddrMapUrl={newAddrMapUrl} newAddrIsDefault={newAddrIsDefault} setNewAddrLabel={setNewAddrLabel} setNewAddrLine1={setNewAddrLine1} setNewAddrArea={setNewAddrArea} setNewAddrCity={setNewAddrCity} setNewAddrPincode={setNewAddrPincode} setNewAddrPhone={setNewAddrPhone} setNewAddrMapUrl={setNewAddrMapUrl} setNewAddrIsDefault={setNewAddrIsDefault} handleAddAddress={handleAddAddress} handleSetDefaultAddress={handleSetDefaultAddress} savingAddress={savingAddress} />
+            </div>
+          )}
+        </div>
 
-        {/* Subscriptions section */}
-        {activeTab === "subscriptions" && (
-  <SubscriptionsTab
-    loadingSubs={loadingSubs}
-    errorSubs={errorSubs}
-    activeSubs={activeSubs}
-    pausedSubs={pausedSubs}
-    vacationFromMap={vacationFromMap}
-    vacationToMap={vacationToMap}
-    setVacationFromMap={setVacationFromMap}
-    setVacationToMap={setVacationToMap}
-    toggleSubscriptionActive={toggleSubscriptionActive}
-    handleSkipTomorrow={handleSkipTomorrow}
-    handleSetVacationRange={handleSetVacationRange}
-    formatSchedule={formatSchedule}
-    formatQtyPattern={formatQtyPattern}
-    formatAddress={formatAddress}
-  />
-)}
-       
-        {/* Recent orders section */}
-        {activeTab === "orders" && (
-  <OrdersTab
-    loadingOrders={loadingOrders}
-    errorOrders={errorOrders}
-    orders={orders}
-    formatAddress={formatAddress}
-  />
-)}
+        {/* STICKY BOTTOM NAVIGATION */}
+        <div style={{ background: "#fff", display: "flex", justifyContent: "space-around", alignItems: "center", padding: "12px 0", paddingBottom: "calc(12px + env(safe-area-inset-bottom))", position: "fixed", bottom: 0, width: "100%", maxWidth: 480, borderTop: "1px solid #e5e7eb", zIndex: 10 }}>
+          <NavItem icon="🏪" label="Shop" isActive={activeTab === "products" || activeTab === "dashboard" || activeTab === "cart"} onClick={() => setActiveTab("products")} />
+          <NavItem icon="📅" label="Subscribe" isActive={activeTab === "subscriptions"} onClick={() => setActiveTab("subscriptions")} />
+          <NavItem icon="💰" label="Wallet" isActive={activeTab === "wallet"} onClick={() => setActiveTab("wallet")} />
+          <NavItem icon="👤" label="Profile" isActive={activeTab === "profile"} onClick={() => setActiveTab("profile")} />
+        </div>
+
       </div>
-    </AppLayout>
-);
+    </div>
+  );
+}
+
+// 🧩 Helper Component for Bottom Nav
+function NavItem({ icon, label, isActive, onClick }: { icon: string, label: string, isActive: boolean, onClick: () => void }) {
+  return (
+    <div onClick={onClick} style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 4, cursor: "pointer", width: "25%", transition: "all 0.2s" }}>
+      <div style={{ fontSize: 24, transform: isActive ? "scale(1.1)" : "scale(1)", opacity: isActive ? 1 : 0.5 }}>{icon}</div>
+      <div style={{ fontSize: 10, fontWeight: 700, color: isActive ? "#2563eb" : "#6b7280" }}>{label}</div>
+    </div>
+  );
 }

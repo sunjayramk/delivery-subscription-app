@@ -17,13 +17,10 @@ export default function App() {
           <Route path="/login" element={<LoginPage />} />
 
           {/* Customer App */}
+          {/* Customer App */}
           <Route
             path="/app/*"
-            element={
-              <ProtectedRoute allowedRoles={["customer"]}>
-                <CustomerHome />
-              </ProtectedRoute>
-            }
+            element={<CustomerHome />}
           />
 
           {/* Delivery Agent App */}
@@ -40,7 +37,7 @@ export default function App() {
           <Route
             path="/admin/*"
             element={
-              <ProtectedRoute allowedRoles={["tenant_admin"]}>
+              <ProtectedRoute allowedRoles={["admin", "tenant_admin", "delivery_manager", "account_manager", "data_manager", "view_only"]}>
                 <AdminDashboard />
               </ProtectedRoute>
             }

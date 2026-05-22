@@ -8,6 +8,9 @@ import {
   addDoc,
   serverTimestamp,
   Timestamp,
+  doc,
+  setDoc,
+  increment,
 } from "firebase/firestore";
 
 export async function generateInvoiceForCustomerMonth(params: {
@@ -15,10 +18,14 @@ export async function generateInvoiceForCustomerMonth(params: {
   customerId: string;
   year: number;
   month: number;
+  deliveryCharge?: number; // ✅ 1. We tell TypeScript to expect the new fee
 }) {
-  const { tenantId, customerId, year, month } = params;
+  const { tenantId, customerId, year, month, deliveryCharge } = params;
+  
+  // Default to 0 if the manager left the box blank
+  const deliveryFee = deliveryCharge || 0;
 
-  // ✅ Fix 1: Prevent duplicate invoices
+  // Prevent duplicate invoices
   const existingQ = query(
     collection(db, "tenants", tenantId, "invoices"),
     where("customerId", "==", customerId),
@@ -30,7 +37,7 @@ export async function generateInvoiceForCustomerMonth(params: {
     throw new Error("Invoice already exists for this period");
   }
 
-  // ✅ Fix 2: Filter transactions by month and year
+  // Filter transactions by month and year
   const start = Timestamp.fromDate(new Date(year, month - 1, 1));
   const end = Timestamp.fromDate(new Date(year, month, 1));
 
@@ -56,14 +63,35 @@ export async function generateInvoiceForCustomerMonth(params: {
     }
   });
 
+  // ✅ 2. Add the delivery fee to the invoice total
+  totalDebits += deliveryFee;
   const closingBalance = totalDebits - totalCredits;
 
-  // ✅ Fix 3: Save invoice under tenant subcollection
+  // ✅ 3. Actually charge the customer's wallet so the math balances out everywhere
+  if (deliveryFee > 0) {
+    // Record it in the ledger
+    await addDoc(collection(db, "tenants", tenantId, "billingTransactions"), {
+      customerId: customerId,
+      type: "debit", // "debit" means we are taking money / charging them
+      amount: deliveryFee,
+      note: `Delivery Charge for ${month}/${year}`,
+      createdAt: serverTimestamp(),
+    });
+
+    // Add it to their total outstanding due
+    const accountRef = doc(db, "tenants", tenantId, "customerAccounts", `${tenantId}_${customerId}`);
+    await setDoc(accountRef, {
+      outstandingDue: increment(deliveryFee)
+    }, { merge: true });
+  }
+
+  // Save invoice under tenant subcollection
   await addDoc(collection(db, "tenants", tenantId, "invoices"), {
     tenantId,
     customerId,
     periodYear: year,
     periodMonth: month,
+    deliveryCharge: deliveryFee, // Save it on the receipt
     totalDebits,
     totalCredits,
     closingBalance,

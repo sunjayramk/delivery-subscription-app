@@ -15,19 +15,21 @@ export default function LoginPage() {
   useEffect(() => {
     if (!user) return;
 
-    switch (user.role) {
-      case "platform_super_admin":
-        navigate("/platform", { replace: true });
-        break;
-      case "tenant_admin":
-        navigate("/admin", { replace: true });
-        break;
-      case "agent":
-        navigate("/agent", { replace: true });
-        break;
-      case "customer":
-        navigate("/app", { replace: true });
-        break;
+    // Check if the user has ANY of the admin panel roles
+    const adminRoles = ["admin", "tenant_admin", "delivery_manager", "account_manager", "data_manager", "view_only"];
+
+    if (adminRoles.includes(user.role)) {
+      navigate("/admin", { replace: true });
+    } else if (user.role === "platform_super_admin") {
+      navigate("/platform", { replace: true });
+    } else if (user.role === "agent") {
+      navigate("/agent", { replace: true });
+    } else if (user.role === "customer") {
+      navigate("/app", { replace: true });
+    } else {
+      // Fallback just in case a role is missing
+      console.warn("Unknown role:", user.role);
+      navigate("/app", { replace: true }); 
     }
   }, [user, navigate]);
 

@@ -1,8 +1,6 @@
 // Admin dashboard for tenant management
 
 import SettingsTab from "./SettingsTab";
-import { createUserWithEmailAndPassword } from "firebase/auth";
-import { getSecondaryAuth } from "../../firebase";
 import { useEffect, useState } from "react";
 import TopBar from "../../components/common/TopBar";
 import { useAuth } from "../../context/AuthContext";
@@ -10,13 +8,18 @@ import { db } from "../../firebase";
 import { createNotification } from "../../services/Notifications";
 import { generateInvoiceForCustomerMonth } from "../../services/invoices";
 import CustomersTab from "./CustomersTab";
-import AgentsTab from "./AgentsTab";
 import DeliveryTab from "./DeliveryTab";
 import BillingTab from "./BillingTab";
 import ProductsTab from "./ProductsTab";
 import OrdersTab from "./OrdersTab";
 import DashboardTab from "./DashboardTab";
 import Toast from "../../components/common/Toast";
+import LogisticsTab from "./LogisticsTab";
+import SubscriptionPlansTab from "./SubscriptionPlansTab";
+import TeamTab from "./TeamTab";
+import DailyManifest from "./DailyManifest";
+
+// ✅ FIX 1: Added Timestamp to the Firebase imports
 import {
   doc,
   getDoc,
@@ -29,8 +32,23 @@ import {
   setDoc,
   increment,
   updateDoc,
-  limit, orderBy
+  limit, 
+  orderBy,
+  Timestamp 
 } from "firebase/firestore";
+
+import { storage } from "../../firebase";
+import { ref, uploadBytes, getDownloadURL } from "firebase/storage";
+
+// ✅ FIX 2: Added the MONTHS array right here at the top
+const MONTHS = [
+  { value: "1", label: "January" }, { value: "2", label: "February" },
+  { value: "3", label: "March" }, { value: "4", label: "April" },
+  { value: "5", label: "May" }, { value: "6", label: "June" },
+  { value: "7", label: "July" }, { value: "8", label: "August" },
+  { value: "9", label: "September" }, { value: "10", label: "October" },
+  { value: "11", label: "November" }, { value: "12", label: "December" },
+];
 
 interface Tenant {
   id: string;
@@ -47,6 +65,7 @@ interface Product {
   price: number;
   isActive: boolean;
   categoryId?: string;
+  imageUrl?: string;
 }
 
 interface OrderItem {
@@ -60,11 +79,12 @@ interface OrderItem {
 interface Order {
   id: string;
   status: string;
-  createdAt?: Date;
+  createdAt?: any;
   items: OrderItem[];
   customerId: string;
   source?: string; 
-  routeName?: string;// "subscription" | "one_time" | etc.
+  type?: string;
+  routeName?: string;
 }
 
 interface CustomerAccount {
@@ -92,1176 +112,701 @@ export default function AdminDashboard() {
   };
 
   const [activeTab, setActiveTab] = useState<
-  "dashboard" |
-  "customers" |
-  "agents" |
-  "delivery" |
-  "products" |
-  "billing" |
-  "orders" |
-  "settings"
+  "dashboard" | "customers" | "team" | "agents" | "delivery" | "products" | "plans" | "billing" | "orders" | "settings" | "logistics" | "manifest"
 >("dashboard");
 
-  // Tenant
   const [tenant, setTenant] = useState<Tenant | null>(null);
   const [loadingTenant, setLoadingTenant] = useState(true);
-  const [tenantError, setTenantError] = useState("");
-
-  // Products
+  const [currentUserRole, setCurrentUserRole] = useState<string>("admin"); // Default fallback
   const [products, setProducts] = useState<Product[]>([]);
+  const [newIsSubscribable, setNewIsSubscribable] = useState(false);
+  const [, setIsGeneratingDeliveries] = useState(false);
   const [loadingProducts, setLoadingProducts] = useState(false);
-  const [productsError, setProductsError] = useState("");
-
-  // Categories
+  const [productsError] = useState("");
   const [categories, setCategories] = useState<{ id: string; name: string }[]>([]);
+  const [banners, setBanners] = useState<any[]>([]);
+  const [uploadingBanner, setUploadingBanner] = useState(false);
 
-  // Orders
   const [orders, setOrders] = useState<Order[]>([]);
   const [loadingOrders, setLoadingOrders] = useState(false);
-  const [ordersError, setOrdersError] = useState("");
+  const [ordersError] = useState("");
 
-  // Billing accounts (outstanding)
   const [accounts, setAccounts] = useState<CustomerAccount[]>([]);
   const [loadingAccounts, setLoadingAccounts] = useState(false);
-  const [accountsError, setAccountsError] = useState("");
+  const [accountsError] = useState("");
 
-  // Product form
   const [newName, setNewName] = useState("");
   const [newUnit, setNewUnit] = useState("");
   const [newPrice, setNewPrice] = useState("");
   const [newCategory, setNewCategory] = useState("");
   const [savingProduct, setSavingProduct] = useState(false);
+  const [newImage, setNewImage] = useState<File | null>(null);
 
-  // Customer form
-const [custEmail, setCustEmail] = useState("");
-const [custPassword, setCustPassword] = useState("");
-const [custName, setCustName] = useState("");
-const [custPhone, setCustPhone] = useState("");
-const [savingCustomer, setSavingCustomer] = useState(false);
-const [customerError, setCustomerError] = useState("");
- 
-// Agent form
-const [agentEmail, setAgentEmail] = useState("");
-const [agentPassword, setAgentPassword] = useState("");
-const [agentName, setAgentName] = useState("");
-const [agentPhone, setAgentPhone] = useState("");
-const [savingAgent, setSavingAgent] = useState(false);
-const [agentError, setAgentError] = useState("");
-
-  // Payment form
   const [paymentCustomerId, setPaymentCustomerId] = useState("");
   const [paymentAmount, setPaymentAmount] = useState("");
   const [paymentNote, setPaymentNote] = useState("");
   const [savingPayment, setSavingPayment] = useState(false);
 
-  // Invoice generation state
   const [invCustomerId, setInvCustomerId] = useState("");
   const [invYear, setInvYear] = useState("2026");
   const [invMonth, setInvMonth] = useState("1");
+  const [invDeliveryCharge, setInvDeliveryCharge] = useState("");
   const [invSaving, setInvSaving] = useState(false);
+  const [invoices, setInvoices] = useState<any[]>([]);
+  const [loadingInvoices, setLoadingInvoices] = useState(false);
   const [invError, setInvError] = useState("");
 
-  // Delivery Routes / Assignments
   const [tenantCustomers, setTenantCustomers] = useState<TenantUser[]>([]);
-  const [tenantAgents, setTenantAgents] = useState<TenantUser[]>([]);
-  const [loadingAssignments, setLoadingAssignments] = useState(false);
-  const [assignmentError, setAssignmentError] = useState("");
- 
- 
-  // Customer profile data (name + phone)
-const [customerProfileMap, setCustomerProfileMap] = useState<
-  Record<string, { name?: string; phone?: string }>
->({});
 
-  const [assignmentAgent, setAssignmentAgent] = useState<Record<string, string>>(
-    {}
-  );
-  const [assignmentRoute, setAssignmentRoute] = useState<Record<string, string>>(
-    {}
-  );
-  const [savingAssignmentFor, setSavingAssignmentFor] = useState<string | null>(
-    null
-  );
+  const [customerProfileMap, setCustomerProfileMap] = useState<Record<string, { name?: string; phone?: string }>>({});
 
   const cardStyle: React.CSSProperties = {
-  marginTop: 24,
-  padding: 20,
-  borderRadius: 16,
-  background: "#ffffff",
-  border: "1px solid #e5e7eb",
-  boxShadow: "0 4px 12px rgba(0,0,0,0.04)",
-};
-
-//===== Create customer user =====
-async function handleCreateCustomer(e: React.FormEvent) {
-  e.preventDefault();
-  if (!tenant) return;
-
-  if (!custEmail || !custPassword || !custName) {
-    setCustomerError("Email, password and name are required.");
-    return;
-  }
-
-  setSavingCustomer(true);
-  setCustomerError("");
-
-  try {
-    const secondaryAuth = getSecondaryAuth();
-
-const cred = await createUserWithEmailAndPassword(
-  secondaryAuth,
-  custEmail,
-  custPassword
-);
-
-    const newUid = cred.user.uid;
-
-    await setDoc(doc(db, "users", newUid), {
-      email: custEmail,
-      role: "customer",
-      tenantId: tenant.id,
-      name: custName,
-      phone: custPhone,
-      createdAt: serverTimestamp(),
-    });
-
-    setCustEmail("");
-    setCustPassword("");
-    setCustName("");
-    setCustPhone("");
-
-    await loadUsersAndAssignments(tenant.id);
-
-    showToast("Customer created successfully!", "success");
-  } catch (err: any) {
-    console.error(err);
-    setCustomerError(err.message || "Failed to create customer.");
-  } finally {
-    setSavingCustomer(false);
-  }
-}
-  
-//===== Create agent user =====
-  async function handleCreateAgent(e: React.FormEvent) {
-  e.preventDefault();
-  if (!tenant) return;
-
-  if (!agentEmail || !agentPassword || !agentName) {
-    setAgentError("Email, password and name are required.");
-    return;
-  }
-
-  setSavingAgent(true);
-  setAgentError("");
-
-  try {
-    const secondaryAuth = getSecondaryAuth();
-
-    const cred = await createUserWithEmailAndPassword(
-      secondaryAuth,
-      agentEmail,
-      agentPassword
-    );
-
-    const newUid = cred.user.uid;
-
-    await setDoc(doc(db, "users", newUid), {
-      email: agentEmail,
-      role: "agent",
-      tenantId: tenant.id,
-      name: agentName,
-      phone: agentPhone,
-      createdAt: serverTimestamp(),
-    });
-
-    setAgentEmail("");
-    setAgentPassword("");
-    setAgentName("");
-    setAgentPhone("");
-
-    await loadUsersAndAssignments(tenant.id);
-
-    showToast("Agent created successfully!");
-  } catch (err: any) {
-    console.error(err);
-    setAgentError(err.message || "Failed to create agent.");
-  } finally {
-    setSavingAgent(false);
-  }
-}
-
-  // ===== Load tenant details =====
-  useEffect(() => {
-    async function loadTenant() {
-      if (!user || !user.tenantId) {
-        setTenantError("No tenant assigned to this admin user.");
-        setLoadingTenant(false);
-        return;
-      }
-
-      try {
-        const ref = doc(db, "tenants", user.tenantId);
-        const snap = await getDoc(ref);
-        if (!snap.exists()) {
-          setTenantError("Tenant not found.");
-        } else {
-          const data = snap.data() as any;
-          setTenant({
-            id: snap.id,
-            name: data.name || "",
-            code: data.code || "",
-            city: data.city || "",
-            isActive: data.isActive ?? true,
-          });
-        }
-      } catch (err) {
-        console.error("Error loading tenant", err);
-        setTenantError("Failed to load tenant details.");
-      } finally {
-        setLoadingTenant(false);
-      }
-    }
-
-    void loadTenant();
-  }, [user]);
-
-  // ===== Categories for this tenant =====
-  async function loadCategories(tenantId: string) {
-    try {
-      const snap = await getDocs(collection(db, "tenants", tenantId, "categories"));
-      const list: { id: string; name: string }[] = [];
-      snap.forEach((docSnap) => {
-        const data = docSnap.data() as any;
-        list.push({ id: docSnap.id, name: data.name || "" });
-      });
-      setCategories(list);
-    } catch (err) {
-      console.error("Error loading categories", err);
-    }
-  }
-
-  // ===== Products for this tenant =====
-  async function loadProducts(tenantId: string) {
-    setLoadingProducts(true);
-    setProductsError("");
-    try {
-      const qProd = query(
-        collection(db, "tenants", tenantId, "products")
-      );
-      const snap = await getDocs(qProd);
-      const list: Product[] = [];
-      snap.forEach((docSnap) => {
-        const data = docSnap.data() as any;
-        list.push({
-          id: docSnap.id,
-          name: data.name || "",
-          unit: data.unit || "",
-          price: data.price ?? 0,
-          isActive: data.isActive ?? true,
-          categoryId: data.categoryId || "",
-        });
-      });
-      setProducts(list);
-    } catch (err) {
-      console.error("Error loading products", err);
-      setProductsError("Failed to load products.");
-    } finally {
-      setLoadingProducts(false);
-    }
-  }
-
-  // ===== Orders for this tenant =====
-  async function loadOrders(tenantId: string) {
-    setLoadingOrders(true);
-    setOrdersError("");
-    try {
-      const qOrders = query(
-        collection(db, "tenants", tenantId, "orders"),
-        orderBy("createdAt", "desc"),
-        limit(300)
-      );
-      const snap = await getDocs(qOrders);
-      const list: Order[] = [];
-      snap.forEach((docSnap) => {
-        const data = docSnap.data() as any;
-        list.push({
-          id: docSnap.id,
-          status: data.status || "pending",
-          items: (data.items || []) as OrderItem[],
-          customerId: data.customerId || "",
-          createdAt: data.createdAt?.toDate
-            ? data.createdAt.toDate()
-            : undefined,
-          source: data.source || "unknown",
-        });
-      });
-      setOrders(list);
-    } catch (err) {
-      console.error("Error loading orders", err);
-      setOrdersError("Failed to load orders.");
-    } finally {
-      setLoadingOrders(false);
-    }
-  }
-
-  // ===== Billing accounts (outstanding due per customer) =====
-  async function loadAccounts(tenantId: string) {
-    setLoadingAccounts(true);
-    setAccountsError("");
-    try {
-      const qAcc = query(
-        collection(db, "tenants", tenantId, "customerAccounts")
-      );
-      const snap = await getDocs(qAcc);
-      const list: CustomerAccount[] = [];
-      snap.forEach((docSnap) => {
-        const data = docSnap.data() as any;
-        list.push({
-          id: docSnap.id,
-          customerId: data.customerId || "",
-          outstandingDue: data.outstandingDue ?? 0,
-        });
-      });
-      setAccounts(list);
-    } catch (err) {
-      console.error("Error loading customer accounts", err);
-      setAccountsError("Failed to load customer billing data.");
-    } finally {
-      setLoadingAccounts(false);
-    }
-  }
-
-  // ===== Users & Assignments (customers ↔ agents) =====
-  async function loadUsersAndAssignments(tenantId: string) {
-    setLoadingAssignments(true);
-    setAssignmentError("");
-    try {
-      // Fetch all users for this tenant
-      const usersQ = query(
-        collection(db, "users"),
-        where("tenantId", "==", tenantId)
-      );
-      const usersSnap = await getDocs(usersQ);
-console.log("Users found:", usersSnap.size, "for tenantId:", tenantId);
-      const customers: TenantUser[] = [];
-      const agents: TenantUser[] = [];
-
-      const profileMap: Record<string, { name?: string; phone?: string }> = {};
-
-      usersSnap.forEach((docSnap) => {
-  const data = docSnap.data() as any;
-  const role = data.role || "";
-  const id = docSnap.id; // ✅ add this line
-
-  const entry: TenantUser = {
-    id,
-    email: data.email || "",
-    role,
+    marginTop: 24,
+    padding: 20,
+    borderRadius: 16,
+    background: "#ffffff",
+    border: "1px solid #e5e7eb",
+    boxShadow: "0 4px 12px rgba(0,0,0,0.04)",
   };
 
-  if (role === "customer") {
-        customers.push({
-          ...entry,
-          name: data.name || "",
-          phone: data.phone || "",
+  const handleWhatsAppReminder = (customerId: string, balance: number) => {
+    const profile = customerProfileMap[customerId];
+    if (!profile?.phone) {
+      showToast("No phone number found.", "error");
+      return;
+    }
+    const cleanPhone = profile.phone.replace(/\D/g, "");
+    const finalPhone = cleanPhone.length === 10 ? `91${cleanPhone}` : cleanPhone;
+    const message = `Hello ${profile.name || "Customer"}, this is a reminder from ${tenant?.name || "our store"}. Your current balance is *₹${balance.toFixed(2)}*. Thank you!`;
+    window.open(`https://wa.me/${finalPhone}?text=${encodeURIComponent(message)}`, "_blank");
+  };
+
+  async function loadInvoices() {
+    if (!tenant) return;
+    setLoadingInvoices(true);
+    try {
+      const snap = await getDocs(collection(db, "tenants", tenant.id, "invoices"));
+      const list: any[] = [];
+      snap.forEach(doc => {
+        const data = doc.data();
+        list.push({
+          id: doc.id,
+          ...data,
+          createdAt: data.createdAt?.toDate ? data.createdAt.toDate() : undefined
         });
-        profileMap[id] = {
-          name: data.name || "",
-          phone: data.phone || "",
-        };
-      } else if (role === "agent") {
-        agents.push({
-          ...entry,
-          name: data.name || "",
-          phone: data.phone || "",
-        });
-      }
-});
-
-
-      setTenantCustomers(customers);
-      setTenantAgents(agents);
-      setCustomerProfileMap(profileMap);
-
-      // Existing assignments
-      const assignQ = query(
-        collection(db, "tenants", tenantId, "customerAssignments")
-      );
-      const assignSnap = await getDocs(assignQ);
-
-      const agentMap: Record<string, string> = {};
-      const routeMap: Record<string, string> = {};
-      assignSnap.forEach((docSnap) => {
-        const data = docSnap.data() as any;
-        const customerId = data.customerId as string | undefined;
-        if (!customerId) return;
-        if (data.agentId) agentMap[customerId] = data.agentId;
-        if (data.routeName) routeMap[customerId] = data.routeName;
       });
-
-      setAssignmentAgent(agentMap);
-      setAssignmentRoute(routeMap);
+      // Sort newest first
+      list.sort((a, b) => (b.createdAt?.getTime() || 0) - (a.createdAt?.getTime() || 0));
+      setInvoices(list);
     } catch (err) {
-      console.error("Error loading users/assignments", err);
-      setAssignmentError("Failed to load delivery routes.");
+      console.error(err);
     } finally {
-      setLoadingAssignments(false);
+      setLoadingInvoices(false);
     }
   }
 
-  // ===== When tenant is loaded, load all data =====
+  // Auto-load them when the Billing tab is opened
   useEffect(() => {
+    if (activeTab === "billing") {
+      loadInvoices();
+    }
+  }, [activeTab, tenant]);
+
+  async function handlePrintInvoice(inv: any) {
+    if (!tenant) return;
+    
+    // 1. Setup Dates & Customer Info
+    const customerName = formatCustomerLabel(inv.customerId);
+    const monthName = MONTHS.find((m: any) => m.value === String(inv.periodMonth))?.label || "";
+    const year = inv.periodYear;
+    
+    const startDate = new Date(year, inv.periodMonth - 1, 1);
+    const endDate = new Date(year, inv.periodMonth, 1);
+    const daysInMonth = new Date(year, inv.periodMonth, 0).getDate();
+
+    // 2. Fetch the actual daily orders for this specific month
+    let dailyLogs: Record<number, { morning: string[], evening: string[], total: number }> = {};
+    
+    try {
+      const qOrders = query(
+        collection(db, "tenants", tenant.id, "orders"),
+        where("customerId", "==", inv.customerId),
+        where("createdAt", ">=", Timestamp.fromDate(startDate)),
+        where("createdAt", "<", Timestamp.fromDate(endDate))
+      );
+      
+      const snap = await getDocs(qOrders);
+      snap.forEach(docSnap => {
+        const data = docSnap.data();
+        if (!data.createdAt) return;
+        
+        const orderDate = data.createdAt.toDate();
+        const dayOfMonth = orderDate.getDate();
+        
+        if (!dailyLogs[dayOfMonth]) {
+          dailyLogs[dayOfMonth] = { morning: [], evening: [], total: 0 };
+        }
+        
+        const shift = data.shift || "Morning"; // Default to Morning if not set
+        const itemsList = (data.items || []).map((it: any) => `${it.name} x${it.qty}`).join(", ");
+        const orderTotal = (data.items || []).reduce((sum: number, it: any) => sum + (it.price * it.qty), 0);
+        
+        if (shift === "Morning") dailyLogs[dayOfMonth].morning.push(itemsList);
+        else dailyLogs[dayOfMonth].evening.push(itemsList);
+        
+        dailyLogs[dayOfMonth].total += orderTotal;
+      });
+    } catch (err) {
+      console.error("Failed to load daily orders for print", err);
+    }
+
+    // 3. Build the Day-by-Day Table HTML
+    let tableRows = "";
+    for (let d = 1; d <= daysInMonth; d++) {
+      const dateObj = new Date(year, inv.periodMonth - 1, d);
+      const dayName = dateObj.toLocaleDateString('en-US', { weekday: 'short' });
+      const log = dailyLogs[d] || { morning: [], evening: [], total: 0 };
+      
+      const mornStr = log.morning.length > 0 ? log.morning.join("<br/>") : "-";
+      const eveStr = log.evening.length > 0 ? log.evening.join("<br/>") : "-";
+      const amtStr = log.total > 0 ? `₹${log.total.toFixed(2)}` : "-";
+
+      tableRows += `
+        <tr>
+          <td style="padding: 8px; border: 1px solid #000; text-align: center;">${d}</td>
+          <td style="padding: 8px; border: 1px solid #000; text-align: center;">${dayName}</td>
+          <td style="padding: 8px; border: 1px solid #000;">${mornStr}</td>
+          <td style="padding: 8px; border: 1px solid #000;">${eveStr}</td>
+          <td style="padding: 8px; border: 1px solid #000; text-align: right; font-weight: bold;">${amtStr}</td>
+        </tr>
+      `;
+    }
+
+    // 4. Gather Financial Summary
+    const prevBalance = (inv.totalDebits - inv.closingBalance + inv.totalCredits) - (inv.subscriptionCharges + inv.oneTimeCharges + inv.deliveryCharge);
+    // Note: The math above estimates previous carryover based on the ledger. 
+    
+    // 5. Generate Final HTML
+    const printContents = `
+      <div style="font-family: Arial, sans-serif; padding: 20px; max-width: 800px; margin: 0 auto; color: #000;">
+        
+        <div style="text-align: center; margin-bottom: 20px;">
+          <h1 style="margin: 0; font-size: 24px; text-transform: uppercase;">${tenant?.name || "Our Store"}</h1>
+          <h3 style="margin: 5px 0 0; font-weight: normal;">Delivery Statement: ${monthName} ${year}</h3>
+        </div>
+
+        <div style="margin-bottom: 15px; font-size: 16px;">
+          <strong>Customer:</strong> ${customerName}
+        </div>
+
+        <table style="width: 100%; border-collapse: collapse; margin-bottom: 30px; font-size: 14px;">
+          <thead>
+            <tr style="background-color: #f3f4f6;">
+              <th style="padding: 10px; border: 1px solid #000; width: 5%;">Date</th>
+              <th style="padding: 10px; border: 1px solid #000; width: 10%;">Day</th>
+              <th style="padding: 10px; border: 1px solid #000; width: 35%;">Morning</th>
+              <th style="padding: 10px; border: 1px solid #000; width: 35%;">Evening</th>
+              <th style="padding: 10px; border: 1px solid #000; width: 15%; text-align: right;">Amount</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${tableRows}
+            <tr style="background-color: #f3f4f6;">
+              <td colspan="4" style="padding: 10px; border: 1px solid #000; text-align: right; font-weight: bold;">Sub Total for ${monthName}</td>
+              <td style="padding: 10px; border: 1px solid #000; text-align: right; font-weight: bold;">₹${(inv.subscriptionCharges + inv.oneTimeCharges).toFixed(2)}</td>
+            </tr>
+          </tbody>
+        </table>
+
+        <div style="width: 350px; margin-left: auto; border: 1px solid #000; padding: 15px; font-size: 14px;">
+          <h4 style="margin: 0 0 10px 0; border-bottom: 1px solid #ccc; padding-bottom: 5px;">Summary</h4>
+          
+          <div style="display: flex; justify-content: space-between; margin-bottom: 5px;">
+            <span>Subscription Orders</span>
+            <span>₹${(inv.subscriptionCharges || 0).toFixed(2)}</span>
+          </div>
+          <div style="display: flex; justify-content: space-between; margin-bottom: 5px;">
+            <span>Other Orders</span>
+            <span>₹${(inv.oneTimeCharges || 0).toFixed(2)}</span>
+          </div>
+          <div style="display: flex; justify-content: space-between; margin-bottom: 5px;">
+            <span>Delivery & Other Charges</span>
+            <span>₹${(inv.deliveryCharge || 0).toFixed(2)}</span>
+          </div>
+          <div style="display: flex; justify-content: space-between; margin-bottom: 5px; color: green;">
+            <span>(Minus) Total Payments</span>
+            <span>- ₹${(inv.totalCredits || 0).toFixed(2)}</span>
+          </div>
+          
+          <div style="border-top: 1px solid #ccc; margin: 10px 0;"></div>
+          
+          <div style="display: flex; justify-content: space-between; margin-bottom: 5px; color: #dc2626;">
+            <span>Previous Month Balance</span>
+            <span>₹${prevBalance.toFixed(2)}</span>
+          </div>
+          
+          <div style="border-top: 2px solid #000; margin: 10px 0;"></div>
+          
+          <div style="display: flex; justify-content: space-between; margin-bottom: 5px; font-weight: bold; font-size: 16px;">
+            <span>Total Due in ${monthName}</span>
+            <span>₹${(inv.closingBalance || 0).toFixed(2)}</span>
+          </div>
+        </div>
+
+        <div style="text-align: center; margin-top: 40px; font-size: 12px; color: #666;">
+          Thank you for your business! Please arrange payment at your earliest convenience.
+        </div>
+      </div>
+    `;
+    
+    const printWindow = window.open("", "_blank");
+    if (printWindow) {
+      printWindow.document.write(printContents);
+      printWindow.document.close();
+      // Give the window a moment to render the fetched data before popping the print dialog
+      setTimeout(() => {
+        printWindow.focus();
+        printWindow.print();
+      }, 500);
+    }
+  }
+
+  function handleWhatsAppInvoice(inv: any) {
+    const customer = tenantCustomers.find((c) => c.id === inv.customerId);
+    if (!customer || !customer.phone) {
+      alert("No phone number saved for this customer!");
+      return;
+    }
+    const message = `Hello ${customer.name},\n\nYour invoice for ${inv.periodMonth}/${inv.periodYear} from *${tenant?.name || "our store"}* is ready.\n\n*Total Due: ₹${inv.closingBalance}*\n\nPlease arrange the payment at your earliest convenience. Thank you!`;
+    const waUrl = `https://wa.me/91${customer.phone}?text=${encodeURIComponent(message)}`;
+    window.open(waUrl, "_blank");
+  }
+
+  function handlePayInvoice(inv: any) {
+    setPaymentCustomerId(inv.customerId);
+    setPaymentAmount(String(inv.closingBalance));
+    setPaymentNote(`Paid invoice for ${inv.periodMonth}/${inv.periodYear}`);
+    window.scrollTo({ top: 0, behavior: "smooth" }); // Auto-scrolls to the top!
+  }
+
+  useEffect(() => {
+    async function loadTenantAndRole() {
+      if (!user) { setLoadingTenant(false); return; }
+      try {
+        // 1. Fetch the user's profile to see their role
+        const userSnap = await getDoc(doc(db, "users", user.uid));
+        if (userSnap.exists()) {
+          setCurrentUserRole(userSnap.data().role || "admin");
+        }
+
+        // 2. Load Tenant Data
+        if (user.tenantId) {
+          const tenantSnap = await getDoc(doc(db, "tenants", user.tenantId));
+          if (tenantSnap.exists()) setTenant({ id: tenantSnap.id, ...tenantSnap.data() } as Tenant);
+        }
+      } finally { 
+        setLoadingTenant(false); 
+      }
+    }
+    loadTenantAndRole();
+  }, [user]);
+
+  // ✅ SECURITY MATRIX: Put this HIGH UP, before any 'if (loading) return' statements!
+  const ROLE_PERMISSIONS: Record<string, string[]> = {
+    admin: ["dashboard", "manifest", "customers", "team", "logistics", "delivery", "products", "plans", "billing", "orders", "settings"],
+    account_manager: ["dashboard", "customers", "billing", "orders"],
+    delivery_manager: ["dashboard", "manifest", "logistics", "delivery", "orders"],
+    data_manager: ["dashboard", "products", "plans"],
+    view_only: ["dashboard"]
+  };
+
+  const allowedTabs = ROLE_PERMISSIONS[currentUserRole] || ROLE_PERMISSIONS["admin"];
+
+  useEffect(() => {
+    if (!allowedTabs.includes(activeTab)) {
+      setActiveTab("dashboard");
+    }
+  }, [activeTab, allowedTabs]);
+
+  // ... rest of your existing useEffects ...
+
+    useEffect(() => {
     if (tenant) {
-      void loadProducts(tenant.id);
-      void loadOrders(tenant.id);
-      void loadAccounts(tenant.id);
-      void loadUsersAndAssignments(tenant.id);
-      void loadCategories(tenant.id);
+      loadProducts(tenant.id); loadOrders(tenant.id); loadAccounts(tenant.id);
+      loadUsersAndAssignments(tenant.id); loadCategories(tenant.id); loadBanners(tenant.id); // ✅ Added loadBanners
     }
   }, [tenant]);
 
-  // ===== Update product =====
-  async function handleUpdateProduct(id: string, updates: Partial<{ name: string; unit: string; price: number; categoryId: string }>) {
-    if (!tenant) return;
-    try {
-      const ref = doc(db, "tenants", tenant.id, "products", id);
-      await updateDoc(ref, { ...updates, updatedAt: serverTimestamp() });
-      await loadProducts(tenant.id);
-      showToast("Product updated successfully!");
-    } catch (err) {
-      console.error("Error updating product", err);
-      showToast("Failed to update product.", "error");
-    }
+  // ✅ FIX 1: Make sure we actually pull the sortOrder from the database!
+  async function loadCategories(tId: string) {
+    const snap = await getDocs(collection(db, "tenants", tId, "categories"));
+    setCategories(snap.docs.map(d => {
+      const data = d.data() as any;
+      return { id: d.id, name: data.name, sortOrder: data.sortOrder || 0 };
+    }));
   }
 
-  // ===== Toggle product active =====
-  async function handleToggleProductActive(id: string, isActive: boolean) {
-    if (!tenant) return;
-    try {
-      const ref = doc(db, "tenants", tenant.id, "products", id);
-      await updateDoc(ref, { isActive: !isActive, updatedAt: serverTimestamp() });
-      await loadProducts(tenant.id);
-      showToast(!isActive ? "Product activated!" : "Product deactivated!");
-    } catch (err) {
-      console.error("Error toggling product", err);
-      showToast("Failed to update product.", "error");
-    }
+  // ✅ FIX 2: Ensure banners are loaded
+  async function loadBanners(tId: string) {
+    const snap = await getDocs(collection(db, "tenants", tId, "banners"));
+    setBanners(snap.docs.map(d => ({ id: d.id, ...d.data() })));
   }
 
-// ===== Create category =====
-  async function handleCreateCategory(name: string) {
+  // ✅ FIX 3: Trigger the loaders when the tenant is found
+  useEffect(() => {
+    if (tenant) {
+      loadProducts(tenant.id); 
+      loadOrders(tenant.id); 
+      loadAccounts(tenant.id);
+      loadUsersAndAssignments(tenant.id); 
+      loadCategories(tenant.id); 
+      loadBanners(tenant.id); // <-- This is crucial!
+    }
+  }, [tenant]);
+
+  async function handleUploadBanner(file: File) {
     if (!tenant) return;
+    setUploadingBanner(true);
     try {
-      await addDoc(collection(db, "tenants", tenant.id, "categories"), {
-        name,
+      // Upload the image to Firebase Storage
+      const fileRef = ref(storage, `tenants/${tenant.id}/banners/${Date.now()}_${file.name}`);
+      await uploadBytes(fileRef, file);
+      const imageUrl = await getDownloadURL(fileRef);
+      
+      // Save the image link to the database
+      await addDoc(collection(db, "tenants", tenant.id, "banners"), {
         tenantId: tenant.id,
-        createdAt: serverTimestamp(),
+        imageUrl,
+        isActive: true,
+        createdAt: serverTimestamp()
       });
-      console.log("Category saved, reloading...");
-      await loadCategories(tenant.id);
-      console.log("Categories after reload:", categories);
+      loadBanners(tenant.id);
+      showToast("Banner uploaded successfully!");
     } catch (err) {
-      console.error("Error creating category", err);
+      console.error("Banner Upload Error:", err);
+      showToast("Failed to upload banner. Check console.", "error");
+    } finally {
+      setUploadingBanner(false);
     }
   }
 
-  // ===== Create product =====
+  async function handleDeleteBanner(id: string) {
+    if (!tenant) return;
+    if (window.confirm("Are you sure you want to delete this banner?")) {
+      await updateDoc(doc(db, "tenants", tenant.id, "banners", id), { isActive: false });
+      loadBanners(tenant.id);
+      showToast("Banner removed");
+    }
+  }
+
+  // --- CATEGORY SEQUENCE LOGIC ---
+  
+  async function handleReorderCategories(updates: {id: string, sortOrder: number}[]) {
+    if (!tenant) return;
+    try {
+      // Save all the new sequence numbers to the database at once
+      const promises = updates.map(u => 
+        updateDoc(doc(db, "tenants", tenant.id, "categories", u.id), { sortOrder: u.sortOrder })
+      );
+      await Promise.all(promises);
+      loadCategories(tenant.id); // Refresh the list correctly
+    } catch (err) {
+      console.error("Sequence error:", err);
+      showToast("Failed to save sequence", "error");
+    }
+  }
+
+  async function loadProducts(tId: string) {
+    setLoadingProducts(true);
+    const snap = await getDocs(query(collection(db, "tenants", tId, "products")));
+    setProducts(snap.docs.map(d => ({ id: d.id, ...d.data() } as Product)));
+    setLoadingProducts(false);
+  }
+
+  async function loadOrders(tId: string) {
+    setLoadingOrders(true);
+    const snap = await getDocs(query(collection(db, "tenants", tId, "orders"), orderBy("createdAt", "desc"), limit(300)));
+    setOrders(snap.docs.map(d => ({ id: d.id, ...d.data() } as Order)));
+    setLoadingOrders(false);
+  }
+
+  async function loadAccounts(tId: string) {
+    setLoadingAccounts(true);
+    const snap = await getDocs(query(collection(db, "tenants", tId, "customerAccounts")));
+    setAccounts(snap.docs.map(d => ({ id: d.id, ...d.data() } as CustomerAccount)));
+    setLoadingAccounts(false);
+  }
+
+  async function loadUsersAndAssignments(tId: string) {
+    const usersSnap = await getDocs(query(collection(db, "users"), where("tenantId", "==", tId)));
+    const custs: TenantUser[] = [];
+    const pMap: Record<string, { name?: string; phone?: string }> = {};
+
+    usersSnap.forEach(d => {
+      const data = d.data() as any;
+      const u = { id: d.id, ...data };
+      if (data.role === "customer") {
+        custs.push(u);
+        pMap[d.id] = { name: data.name, phone: data.phone };
+      }
+    });
+
+    setTenantCustomers(custs); setCustomerProfileMap(pMap);
+  }
+
+  async function handleCreateCategory(name: string, sortOrder: number) { // ✅ Added sortOrder
+    if (!tenant) return;
+    try {
+      await addDoc(collection(db, "tenants", tenant.id, "categories"), { name, sortOrder, tenantId: tenant.id, createdAt: serverTimestamp() }); // ✅ Saving sortOrder
+      loadCategories(tenant.id);
+      showToast("Category added!");
+    } catch (err) { console.error(err); }
+  }
+
   async function handleCreateProduct(e: React.FormEvent) {
     e.preventDefault();
     if (!tenant) return;
-
-    if (!newName.trim() || !newUnit.trim() || !newPrice.trim()) {
-      setProductsError("Please fill all product fields.");
-      return;
-    }
-
-    const priceNumber = Number(newPrice);
-    if (Number.isNaN(priceNumber)) {
-      setProductsError("Price must be a valid number.");
-      return;
-    }
-
     setSavingProduct(true);
-    setProductsError("");
     try {
+      let imageUrl = "";
+      if (newImage) {
+        const fileRef = ref(storage, `tenants/${tenant.id}/products/${Date.now()}_${newImage.name}`);
+        await uploadBytes(fileRef, newImage);
+        imageUrl = await getDownloadURL(fileRef);
+      }
       await addDoc(collection(db, "tenants", tenant.id, "products"), {
-        tenantId: tenant.id,
-        name: newName.trim(),
-        unit: newUnit.trim(),
-        price: priceNumber,
-        isActive: true,
-        categoryId: newCategory || "",
-        createdAt: serverTimestamp(),
+        tenantId: tenant.id, name: newName, unit: newUnit, price: Number(newPrice), isActive: true, categoryId: newCategory, imageUrl, 
+        isSubscribable: newIsSubscribable, // ✅ SAVING THE FLAG HERE
+        createdAt: serverTimestamp()
       });
-
-      setNewName("");
-      setNewUnit("");
-      setNewPrice("");
-      setNewCategory("");
-
-      await loadProducts(tenant.id);
-    } catch (err) {
-      console.error("Error creating product", err);
-      setProductsError("Failed to create product.");
-    } finally {
-      setSavingProduct(false);
-    }
-  }
-function formatCustomerLabel(customerId: string): string {
-  const p = customerProfileMap[customerId];
-  if (p?.name && p.name.trim().length > 0) {
-    return `${p.name} (${customerId.slice(-6)})`;
-  }
-  return customerId;
-}
-
-  // ===== Subscription scheduling helper =====
-  function shouldGenerateForToday(
-    scheduleType: string,
-    scheduleDays?: number[],
-    startDate?: Date
-  ): boolean {
-    const now = new Date();
-    const today = now.getDay(); // 0=Sun,1=Mon,...6=Sat
-
-    switch (scheduleType) {
-      case "daily":
-        return true;
-
-      case "mon_fri":
-        return today >= 1 && today <= 5;
-
-      case "weekends":
-        return today === 0 || today === 6;
-
-      case "custom":
-        if (!scheduleDays || scheduleDays.length === 0) return false;
-        return scheduleDays.includes(today);
-
-      case "alternate_days": {
-        if (!startDate) return true; // fallback
-        const todayMidnight = new Date(
-          now.getFullYear(),
-          now.getMonth(),
-          now.getDate()
-        );
-        const startMidnight = new Date(
-          startDate.getFullYear(),
-          startDate.getMonth(),
-          startDate.getDate()
-        );
-        const diffMs = todayMidnight.getTime() - startMidnight.getTime();
-        const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
-        return diffDays % 2 === 0;
-      }
-
-      default:
-        return true;
-    }
+      setNewName(""); setNewUnit(""); setNewPrice(""); setNewImage(null); setNewIsSubscribable(false); // ✅ Reset it
+      loadProducts(tenant.id);
+      showToast("Product created!");
+    } finally { setSavingProduct(false); }
   }
 
-  // ===== Generate orders from subscriptions =====
-  async function handleGenerateOrdersFromSubscriptions() {
+  async function handleUpdateProduct(id: string, updates: any, file?: File | null) {
     if (!tenant) return;
-
-
-    const now = new Date();
-    const todayWeekday = now.getDay();
-    const todayStr = now.toISOString().slice(0, 10); // YYYY-MM-DD
-
-    try {
-      // Active subscriptions
-      const subsQ = query(
-        collection(db, "tenants", tenant.id, "subscriptions"),
-        where("isActive", "==", true)
-      );
-      const subsSnap = await getDocs(subsQ);
-      const createPromises: Promise<unknown>[] = [];
-
-      subsSnap.forEach((subDoc) => {
-        const data = subDoc.data() as any;
-        const customerId = data.customerId;
-        if (!customerId) return;
-
-        const scheduleType = data.scheduleType || "daily";
-        const scheduleDays =
-          (data.scheduleDays as number[] | undefined) ?? undefined;
-        const startDate =
-          data.startDate?.toDate?.() ??
-          (data.createdAt?.toDate?.() ?? undefined);
-
-        // Schedule-type logic
-        if (!shouldGenerateForToday(scheduleType, scheduleDays, startDate)) {
-          return;
-        }
-
-        // Skip dates
-        const skipDates =
-          (data.skipDates as string[] | undefined) ?? undefined;
-        if (skipDates && skipDates.includes(todayStr)) {
-          return;
-        }
-
-        // Vacation range
-        const vacationFrom = data.vacationFrom as string | undefined;
-        const vacationTo = data.vacationTo as string | undefined;
-        if (
-          vacationFrom &&
-          vacationTo &&
-          todayStr >= vacationFrom &&
-          todayStr <= vacationTo
-        ) {
-          return;
-        }
-
-        // Determine quantity (per-weekday overrides)
-        const baseQty = data.qty ?? 1;
-        const dayQuantities =
-          (data.dayQuantities as Record<string, number> | undefined) ??
-          undefined;
-        const overrideQty =
-          dayQuantities && dayQuantities[String(todayWeekday)];
-        const finalQty =
-          typeof overrideQty === "number" && overrideQty > 0
-            ? overrideQty
-            : baseQty;
-
-        const item: OrderItem = {
-          productId: data.productId,
-          name: data.productName,
-          unit: data.unit,
-          price: data.price ?? 0,
-          qty: finalQty,
-        };
-
-        const deliveryAddress = data.deliveryAddress || null;
-
-        const routeName = assignmentRoute[customerId] || "";
-
-const p = addDoc(collection(db, "tenants", tenant.id, "orders"), {
-  tenantId: tenant.id,
-  customerId,
-  routeName,
-  status: "pending",
-  createdAt: serverTimestamp(),
-  source: "subscription",
-  subscriptionId: subDoc.id,
-  orderDate: todayStr,
-  items: [item],
-  deliveryAddress,
-});
-
-        createPromises.push(p);
-      });
-
-      await Promise.all(createPromises);
-      showToast("Orders generated from subscriptions!", "success");
-
-      await loadOrders(tenant.id);
-    } catch (err) {
-      console.error("Error generating orders from subscriptions", err);
-      showToast("Failed to generate orders from subscriptions.", "error");
+    let final = { ...updates };
+    if (file) {
+      const fileRef = ref(storage, `tenants/${tenant.id}/products/${Date.now()}_${file.name}`);
+      await uploadBytes(fileRef, file);
+      final.imageUrl = await getDownloadURL(fileRef);
     }
+    await updateDoc(doc(db, "tenants", tenant.id, "products", id), { ...final, updatedAt: serverTimestamp() });
+    loadProducts(tenant.id);
   }
 
-  // ===== DAILY SUMMARY =====
-  const today = new Date();
-  function isSameDay(d?: Date): boolean {
-    if (!d) return false;
-    return (
-      d.getFullYear() === today.getFullYear() &&
-      d.getMonth() === today.getMonth() &&
-      d.getDate() === today.getDate()
-    );
+  async function handleToggleProductActive(id: string, current: boolean) {
+    if (!tenant) return;
+    await updateDoc(doc(db, "tenants", tenant.id, "products", id), { isActive: !current });
+    loadProducts(tenant.id);
   }
 
-  const todaysOrders = orders.filter((o) => isSameDay(o.createdAt));
-
-  let totalOrdersToday = todaysOrders.length;
-  let subscriptionOrders = 0;
-  let oneTimeOrders = 0;
-
-  let pendingCount = 0;
-  let deliveredCount = 0;
-  let notDeliveredCount = 0;
-
-  const routePackingMap: Record<
-  string,
-  Record<string, { name: string; unit: string; qty: number }>
-> = {};
-
-  const productSummaryMap: Record<
-    string,
-    {
-      productId: string;
-      name: string;
-      unit: string;
-      totalQty: number;
-      subscriptionQty: number;
-      oneTimeQty: number;
-      totalRevenue: number;
-    }
-  > = {};
-
-  todaysOrders.forEach((order) => {
-    const source = order.source || "unknown";
-    if (source === "subscription") subscriptionOrders += 1;
-    if (source === "one_time") oneTimeOrders += 1;
-
-    const status = (order.status || "").toLowerCase();
-    if (status === "pending") pendingCount += 1;
-    else if (status === "delivered") deliveredCount += 1;
-    else if (status === "not_delivered") notDeliveredCount += 1;
-
-    order.items.forEach((it) => {
-      const route =
-  order.routeName ||
-  assignmentRoute[order.customerId] ||
-  "Unassigned";
-
-if (!routePackingMap[route]) {
-  routePackingMap[route] = {};
-}
-
-const routeKey = it.productId || it.name;
-
-if (!routePackingMap[route][routeKey]) {
-  routePackingMap[route][routeKey] = {
-    name: it.name,
-    unit: it.unit,
-    qty: 0,
-  };
-}
-
-routePackingMap[route][routeKey].qty += it.qty;
-      const pid = it.productId || it.name;
-      const key = pid || it.name;
-
-      if (!productSummaryMap[key]) {
-        productSummaryMap[key] = {
-          productId: pid,
-          name: it.name,
-          unit: it.unit,
-          totalQty: 0,
-          subscriptionQty: 0,
-          oneTimeQty: 0,
-          totalRevenue: 0,
-        };
-      }
-
-      productSummaryMap[key].totalQty += it.qty;
-      productSummaryMap[key].totalRevenue += it.qty * (it.price ?? 0);
-
-      if (source === "subscription") {
-        productSummaryMap[key].subscriptionQty += it.qty;
-      } else if (source === "one_time") {
-        productSummaryMap[key].oneTimeQty += it.qty;
-      }
-    });
-  });
-
-  const productSummaryList = Object.values(productSummaryMap).sort((a, b) =>
-    a.name.localeCompare(b.name)
-  );
-const routePackingList = Object.entries(routePackingMap).map(
-  ([route, products]) => ({
-    route,
-    products: Object.values(products),
-  })
-);
-
-  // ===== RECORD PAYMENT =====
-  async function handleRecordPayment(e: React.FormEvent) {
+      async function handleRecordPayment(e: React.FormEvent) {
     e.preventDefault();
     if (!tenant) return;
-
-    if (!paymentCustomerId.trim() || !paymentAmount.trim()) {
-      setAccountsError("Please enter customer ID and amount.");
-      return;
-    }
-
-    const amountNum = Number(paymentAmount);
-    if (Number.isNaN(amountNum) || amountNum <= 0) {
-      setAccountsError("Amount must be a positive number.");
-      return;
-    }
-
     setSavingPayment(true);
-    setAccountsError("");
     try {
-      // Transaction log
-      await addDoc(collection(db, "tenants", tenant.id, "billingTransactions"), {
-        tenantId: tenant.id,
-        customerId: paymentCustomerId.trim(),
-        type: "payment",
-        amount: amountNum,
-        note: paymentNote.trim(),
-        createdAt: serverTimestamp(),
+      const amount = Number(paymentAmount);
+      await addDoc(collection(db, "tenants", tenant.id, "billingTransactions"), { customerId: paymentCustomerId, type: "payment", amount, createdAt: serverTimestamp() });
+      await setDoc(doc(db, "tenants", tenant.id, "customerAccounts", `${tenant.id}_${paymentCustomerId}`), { outstandingDue: increment(-amount) }, { merge: true });
+      await createNotification({ tenantId: tenant.id, userId: paymentCustomerId, type: "payment", title: "Payment received", message: `₹${amount} recorded.` });
+      setPaymentAmount(""); setPaymentCustomerId(""); loadAccounts(tenant.id);
+      showToast("Payment recorded!");
+    } finally { setSavingPayment(false); }
+  }
+
+  async function handleGenerateInvoice(e: React.FormEvent) {
+    e.preventDefault();
+    if (!tenant) return;
+    setInvSaving(true);
+    try {
+      await generateInvoiceForCustomerMonth({ tenantId: tenant.id, customerId: invCustomerId, year: Number(invYear), month: Number(invMonth), deliveryCharge: Number(invDeliveryCharge)});    
+      showToast("Invoice generated!"); loadInvoices();
+    } catch (e:any) { console.error("INVOICE ERROR:", e); setInvError("Failed."); } finally { setInvSaving(false); }
+  }
+
+  async function handleUpdateOrderStatus(id: string, status: string) {
+    if (!tenant) return;
+    await updateDoc(doc(db, "tenants", tenant.id, "orders", id), { status });
+    loadOrders(tenant.id);
+  }
+
+  function formatCustomerLabel(id: string) {
+    const p = customerProfileMap[id];
+    return p?.name ? `${p.name} (${id.slice(-4)})` : id;
+  }
+
+  const _handleGenerateDeliveries = async () => {
+    if (!tenant) return;
+    setIsGeneratingDeliveries(true);
+    try {
+      // 1. Setup the 3 Target Dates (Today, Tomorrow, Day After)
+      const datesToGenerate = [];
+      for (let i = 0; i < 3; i++) {
+        const d = new Date();
+        d.setDate(d.getDate() + i);
+        d.setHours(0, 0, 0, 0);
+        
+        const offset = d.getTimezoneOffset();
+        const localD = new Date(d.getTime() - (offset * 60 * 1000));
+        const dateStr = localD.toISOString().split('T')[0];
+        
+        datesToGenerate.push({ dateObj: d, dateStr, dayOfWeek: d.getDay() });
+      }
+
+      const startDateStr = datesToGenerate[0].dateStr;
+      const endDateStr = datesToGenerate[2].dateStr;
+
+      // 2. Fetch all active subscriptions
+      const qSubs = query(collection(db, "tenants", tenant.id, "subscriptions"), where("isActive", "==", true));
+      const subSnap = await getDocs(qSubs);
+
+      // 3. Prevent Duplicates! 
+      // ✅ FIX: Only query by 'date' to avoid Firebase Composite Index crashes!
+      const qExisting = query(
+        collection(db, "tenants", tenant.id, "orders"),
+        where("date", ">=", startDateStr),
+        where("date", "<=", endDateStr)
+      );
+      const existingSnap = await getDocs(qExisting);
+      
+      const existingOrderKeys = new Set<string>();
+      existingSnap.forEach(docSnap => {
+        const data = docSnap.data();
+        // ✅ FIX: We now filter by "subscription" type right here in memory
+        if (data.type === "subscription" && data.customerId && data.shift && data.date) {
+          existingOrderKeys.add(`${data.customerId}_${data.shift}_${data.date}`);
+        }
       });
 
-      // Update outstanding due
-      const accId = `${tenant.id}_${paymentCustomerId.trim()}`;
-      const accRef = doc(db, "tenants", tenant.id, "customerAccounts", accId);
+      // 4. Calculate new orders
+      const ordersToCreate = new Map();
 
-      await setDoc(
-        accRef,
-        {
-          tenantId: tenant.id,
-          customerId: paymentCustomerId.trim(),
-          outstandingDue: increment(-amountNum),
-          updatedAt: serverTimestamp(),
-          createdAt: serverTimestamp(),
-        },
-        { merge: true }
-      );
-await createNotification({
-  tenantId: tenant.id,
-  userId: paymentCustomerId.trim(),
-  type: "payment",
-  title: "Payment received",
-  message: `Payment of ₹${amountNum.toFixed(2)} recorded.`,
-});
+      datesToGenerate.forEach(({ dateObj, dateStr, dayOfWeek }) => {
+        subSnap.forEach(docSnap => {
+          const sub = docSnap.data();
 
-      setPaymentCustomerId("");
-      setPaymentAmount("");
-      setPaymentNote("");
+          if (!sub.startDate) return; // Safety check
+          const subStart = sub.startDate?.toDate ? sub.startDate.toDate() : new Date(sub.startDate);
+          subStart.setHours(0,0,0,0);
+          if (subStart > dateObj) return; 
 
-      await loadAccounts(tenant.id);
-    } catch (err) {
-      console.error("Error recording payment", err);
-      setAccountsError("Failed to record payment.");
-    } finally {
-      setSavingPayment(false);
-    }
-  }
-async function handleGenerateInvoice(e: React.FormEvent) {
-  e.preventDefault();
-  if (!tenant) return;
+          if (sub.skipDates && sub.skipDates.includes(dateStr)) return;
+          if (sub.vacationFrom && sub.vacationTo && dateStr >= sub.vacationFrom && dateStr <= sub.vacationTo) return;
 
-  if (!invCustomerId.trim()) {
-    setInvError("Enter customer ID.");
-    return;
-  }
+          let deliversToday = false;
+          let qtyForToday = sub.qty || 1;
 
-  setInvSaving(true);
-  setInvError("");
-  try {
-    await generateInvoiceForCustomerMonth({
-      tenantId: tenant.id,
-      customerId: invCustomerId.trim(),
-      year: Number(invYear),
-      month: Number(invMonth),
-    });
-    showToast("Invoice generated successfully!", "success");
-  } catch (err) {
-    console.error("Failed to generate invoice", err);
-    setInvError("Failed to generate invoice.");
-  } finally {
-    setInvSaving(false);
-  }
-}
+          if (sub.scheduleType === "daily") deliversToday = true;
+          else if (sub.scheduleType === "mon_fri" && dayOfWeek >= 1 && dayOfWeek <= 5) deliversToday = true;
+          else if (sub.scheduleType === "weekends" && (dayOfWeek === 0 || dayOfWeek === 6)) deliversToday = true;
+          else if (sub.scheduleType === "custom" && sub.scheduleDays?.includes(dayOfWeek)) deliversToday = true;
+          else if (sub.scheduleType === "alternate_days") {
+            const diffTime = Math.abs(dateObj.getTime() - subStart.getTime());
+            const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+            if (diffDays % 2 === 0) deliversToday = true;
+          }
 
- // ===== UPDATE ORDER STATUS =====
-  async function handleUpdateOrderStatus(orderId: string, status: string) {
-    if (!tenant) return;
-    try {
-      const ref = doc(db, "tenants", tenant.id, "orders", orderId);
-      await updateDoc(ref, {
-        status,
-        updatedAt: serverTimestamp(),
+          if (!deliversToday) return;
+
+          if (sub.dayQuantities && sub.dayQuantities[dayOfWeek]) {
+            qtyForToday = Number(sub.dayQuantities[dayOfWeek]);
+          }
+
+          if (qtyForToday <= 0) return;
+
+          const shift = sub.shift || "Morning";
+          const uniqueKey = `${sub.customerId}_${shift}_${dateStr}`;
+
+          if (existingOrderKeys.has(uniqueKey)) return;
+
+          if (!ordersToCreate.has(uniqueKey)) {
+            ordersToCreate.set(uniqueKey, {
+              tenantId: tenant.id,
+              customerId: sub.customerId,
+              customerName: sub.customerName || "Customer",
+              deliveryAddress: sub.deliveryAddress || null,
+              shift: shift,
+              status: "pending",
+              type: "subscription",
+              totalAmount: 0,
+              items: [],
+              date: dateStr, 
+            });
+          }
+
+          const masterOrder = ordersToCreate.get(uniqueKey);
+          const itemPrice = sub.price || 0;
+          
+          masterOrder.items.push({
+            productId: sub.productId,
+            name: sub.productName,
+            unit: sub.unit,
+            price: itemPrice,
+            qty: qtyForToday
+          });
+          
+          masterOrder.totalAmount += (itemPrice * qtyForToday);
+        });
       });
-      await loadOrders(tenant.id);
+
+      if (ordersToCreate.size === 0) {
+        alert("No new orders to generate! (Everything is already generated or no active subscriptions for the next 3 days).");
+        setIsGeneratingDeliveries(false);
+        return;
+      }
+
+      // 5. Save the new Orders to Firebase
+      let createdCount = 0;
+      for (const [, orderData] of ordersToCreate.entries()) {
+        orderData.createdAt = serverTimestamp(); 
+        await addDoc(collection(db, "tenants", tenant.id, "orders"), orderData);
+        createdCount++;
+      }
+
+      alert(`✅ Success! Generated ${createdCount} new orders for the next 3 days.`);
+      loadOrders(tenant.id);
     } catch (err) {
-      console.error("Error updating order status", err);
-    }
-  }
-
-  // ===== SAVE ASSIGNMENT (customer ↔ agent + route) =====
-  async function handleSaveAssignment(customerId: string) {
-    if (!tenant) return;
-    const agentId = assignmentAgent[customerId] || "";
-    const routeName = assignmentRoute[customerId] || "";
-
-    setSavingAssignmentFor(customerId);
-    setAssignmentError("");
-
-    try {
-      const ref = doc(
-  db,
-  "tenants", tenant.id,
-  "customerAssignments",
-  `${tenant.id}_${customerId}`
-);
-      await setDoc(
-        ref,
-        {
-          tenantId: tenant.id,
-          customerId,
-          agentId: agentId || null,
-          routeName: routeName || "",
-          updatedAt: serverTimestamp(),
-          createdAt: serverTimestamp(),
-        },
-        { merge: true }
-      );
-    } catch (err) {
-      console.error("Error saving assignment", err);
-      setAssignmentError("Failed to save assignment.");
+      console.error("Error generating deliveries:", err);
+      alert("Failed to generate deliveries.");
     } finally {
-      setSavingAssignmentFor(null);
+      setIsGeneratingDeliveries(false);
     }
-  }
+  };
 
-  // ===== RENDER =====
-  if (loadingTenant) {
+  void _handleGenerateDeliveries;
+
+  if (loadingTenant) return <div className="desktop-container"><p>Loading...</p></div>;
+
     return (
-      <div style={{ background: "#f9fafb", minHeight: "100vh" }}>
-        <TopBar title="Tenant Admin Panel" />
-        <div style={{ padding: 24 }}>
-          <p>Loading admin panel...</p>
-        </div>
-      </div>
-    );
-  }
-
-  if (tenantError) {
-    return (
-      <div style={{ background: "#f9fafb", minHeight: "100vh" }}>
-        <TopBar title="Tenant Admin Panel" />
-        <div style={{ padding: 24 }}>
-          <h1>Tenant Admin Panel</h1>
-          <p style={{ color: "red" }}>{tenantError}</p>
-        </div>
-      </div>
-    );
-  }
-
-  if (!tenant) {
-    return (
-      <div style={{ background: "#f9fafb", minHeight: "100vh" }}>
-        <TopBar title="Tenant Admin Panel" />
-        <div style={{ padding: 24 }}>
-          <h1>Tenant Admin Panel</h1>
-          <p>No tenant data available.</p>
-        </div>
-      </div>
-    );
-  }
-
-  return (
     <div style={{ background: "#f9fafb", minHeight: "100vh" }}>
-      {toastMessage && (
-        <Toast
-          message={toastMessage}
-          type={toastType}
-          onClose={() => setToastMessage("")}
-        />
-      )}
-      <TopBar title="Tenant Admin Panel" />
-      <div
-  style={{
-    padding: 32,
-    maxWidth: 1100,
-    margin: "0 auto",
-  }}
->
-        <p>You are managing this store:</p>
-
-        {/* Tenant Info */}
-        <div style={cardStyle}>
-          <h2 style={{ marginTop: 0 }}>{tenant.name}</h2>
-          <p>
-            <strong>Code:</strong> {tenant.code}
-          </p>
-          <p>
-            <strong>City:</strong> {tenant.city || "—"}
-          </p>
-          <p>
-            <strong>Status:</strong> {tenant.isActive ? "Active" : "Inactive"}
-          </p>
+      {toastMessage && <Toast message={toastMessage} type={toastType} onClose={() => setToastMessage("")} />}
+      <TopBar title="Admin Panel" />
+      <div className="desktop-container">
+        {tenant && <div style={cardStyle}><h2>{tenant.name}</h2><p>Code: {tenant.code}</p></div>}
+        
+        <div style={{ display: "flex", gap: 8, margin: "20px 0", flexWrap: "wrap", justifyContent: "center" }}>
+          {allowedTabs.map(k => (
+  <button key={k} onClick={() => setActiveTab(k as any)} style={{ padding: "8px 14px", borderRadius: 20, background: activeTab === k ? "#111827" : "#fff", color: activeTab === k ? "#fff" : "#333", cursor: "pointer", border: "1px solid #ddd", fontSize: 13 }}>
+    {k.toUpperCase()}
+  </button>
+))}
         </div>
 
-<div
-  style={{
-    display: "flex",
-    gap: 12,
-    margin: "16px 0 24px 0",
-    flexWrap: "wrap",
-  }}
->
-  {[
-    { key: "dashboard", label: "📊 Dashboard" },
-    { key: "customers", label: "👤 Customers" },
-    { key: "agents", label: "🚚 Agents" },
-    { key: "delivery", label: "🗺 Delivery" },
-    { key: "products", label: "📦 Products" },
-    { key: "billing", label: "💰 Billing" },
-    { key: "orders", label: "🧾 Orders" },
-    { key: "settings", label: "⚙️ Settings" },
-  ].map((tab) => (
-    <button
-      key={tab.key}
-      onClick={() => setActiveTab(tab.key as any)}
-      style={{
-        padding: "8px 14px",
-        borderRadius: 20,
-        border: activeTab === tab.key ? "none" : "1px solid #d1d5db",
-        background:
-          activeTab === tab.key ? "#111827" : "#ffffff",
-        color:
-          activeTab === tab.key ? "#ffffff" : "#374151",
-        cursor: "pointer",
-        fontSize: 13,
-      }}
-    >
-      {tab.label}
-    </button>
-  ))}
-</div>
+        {activeTab === "dashboard" && <DashboardTab />}
+        {activeTab === "manifest" && <DailyManifest />}
+        {activeTab === "customers" && <CustomersTab />}
+        {activeTab === "team" && <TeamTab />}
+        {activeTab === "delivery" && <DeliveryTab />}
+        {activeTab === "products" && <ProductsTab {...{cardStyle, products, categories, banners, loadingProducts, productsError, newName, newUnit, newPrice, newCategory, savingProduct, setNewName, setNewUnit, setNewPrice, setNewCategory, setNewImage, handleCreateProduct, handleUpdateProduct, handleToggleProductActive, handleCreateCategory, handleUpdateCategory: async () => {}, handleReorderCategories, handleUploadBanner, handleDeleteBanner, uploadingBanner, newIsSubscribable, setNewIsSubscribable}} />}
+        {activeTab === "billing" && <BillingTab {...{cardStyle, accounts, loadingAccounts, accountsError, paymentCustomerId, paymentAmount, paymentNote, savingPayment, invCustomerId, invYear, invMonth, invDeliveryCharge, invSaving, invError, setPaymentCustomerId, setPaymentAmount, setPaymentNote, setInvCustomerId, setInvYear, setInvMonth, setInvDeliveryCharge, handleRecordPayment, handleGenerateInvoice, formatCustomerLabel, handleWhatsAppReminder}} customers={tenantCustomers} invoices={invoices} loadingInvoices={loadingInvoices} handlePrintInvoice={handlePrintInvoice} handleWhatsAppInvoice={handleWhatsAppInvoice} handlePayInvoice={handlePayInvoice}/>}
+        {activeTab === "orders" && <OrdersTab {...{cardStyle, orders, loadingOrders, ordersError, formatCustomerLabel, handleUpdateOrderStatus}} />}
+        {activeTab === "settings" && <SettingsTab />}
+        {activeTab === "logistics" && <LogisticsTab />}
+        {activeTab === "plans" && <SubscriptionPlansTab />}
         
-        {activeTab === "customers" && (
-  <CustomersTab
-    cardStyle={cardStyle}
-    custEmail={custEmail}
-    custPassword={custPassword}
-    custName={custName}
-    custPhone={custPhone}
-    savingCustomer={savingCustomer}
-    customerError={customerError}
-    customers={tenantCustomers}
-    setCustEmail={setCustEmail}
-    setCustPassword={setCustPassword}
-    setCustName={setCustName}
-    setCustPhone={setCustPhone}
-    handleCreateCustomer={handleCreateCustomer}
-  />
-)}
-
-{activeTab === "agents" && (
-  <AgentsTab
-    cardStyle={cardStyle}
-    agentEmail={agentEmail}
-    agentPassword={agentPassword}
-    agentName={agentName}
-    agentPhone={agentPhone}
-    savingAgent={savingAgent}
-    agentError={agentError}
-    agents={tenantAgents}
-    setAgentEmail={setAgentEmail}
-    setAgentPassword={setAgentPassword}
-    setAgentName={setAgentName}
-    setAgentPhone={setAgentPhone}
-    handleCreateAgent={handleCreateAgent}
-  />
-)}
-
-{activeTab === "settings" && (
-          <SettingsTab />
-        )}
-        
-        {/* Delivery Routes & Customer Assignment */}
-        {activeTab === "delivery" && (
-  <DeliveryTab
-    cardStyle={cardStyle}
-    tenantCustomers={tenantCustomers}
-    tenantAgents={tenantAgents}
-    customerProfileMap={customerProfileMap}
-    assignmentAgent={assignmentAgent}
-    assignmentRoute={assignmentRoute}
-    savingAssignmentFor={savingAssignmentFor}
-    loadingAssignments={loadingAssignments}
-    assignmentError={assignmentError}
-    formatCustomerLabel={formatCustomerLabel}
-    setAssignmentAgent={setAssignmentAgent}
-    setAssignmentRoute={setAssignmentRoute}
-    handleSaveAssignment={handleSaveAssignment}
-  />
-)}
-
-        {/* DAILY SUMMARY */}
-        {activeTab === "dashboard" && (
-  <DashboardTab
-        cardStyle={cardStyle}
-    totalOrdersToday={totalOrdersToday}
-    subscriptionOrders={subscriptionOrders}
-    oneTimeOrders={oneTimeOrders}
-    pendingCount={pendingCount}
-    deliveredCount={deliveredCount}
-    notDeliveredCount={notDeliveredCount}
-    productSummaryList={productSummaryList}
-    routePackingList={routePackingList}
-    today={today}
-    handleGenerateOrdersFromSubscriptions={
-      handleGenerateOrdersFromSubscriptions
-    }
-  />
-)}
-        {/* CUSTOMER BILLING */}
-        {/* CUSTOMER BILLING */}
-
-{activeTab === "billing" && (
-  <BillingTab
-    cardStyle={cardStyle}
-    accounts={accounts}
-    loadingAccounts={loadingAccounts}
-    accountsError={accountsError}
-    paymentCustomerId={paymentCustomerId}
-    paymentAmount={paymentAmount}
-    paymentNote={paymentNote}
-    savingPayment={savingPayment}
-    invCustomerId={invCustomerId}
-    invYear={invYear}
-    invMonth={invMonth}
-    invSaving={invSaving}
-    invError={invError}
-    customers={tenantCustomers}
-    setPaymentCustomerId={setPaymentCustomerId}
-    setPaymentAmount={setPaymentAmount}
-    setPaymentNote={setPaymentNote}
-    setInvCustomerId={setInvCustomerId}
-    setInvYear={setInvYear}
-    setInvMonth={setInvMonth}
-    handleRecordPayment={handleRecordPayment}
-    handleGenerateInvoice={handleGenerateInvoice}
-    formatCustomerLabel={formatCustomerLabel}
-  />
-)}
-
-        {/* PRODUCT MANAGEMENT */}
-        {activeTab === "products" && (
-  <ProductsTab
-    cardStyle={cardStyle}
-    products={products}
-    categories={categories}
-    loadingProducts={loadingProducts}
-    productsError={productsError}
-    newName={newName}
-    newUnit={newUnit}
-    newPrice={newPrice}
-    newCategory={newCategory}
-    savingProduct={savingProduct}
-    setNewName={setNewName}
-    setNewUnit={setNewUnit}
-    setNewPrice={setNewPrice}
-    setNewCategory={setNewCategory}
-    handleCreateProduct={handleCreateProduct}
-    handleCreateCategory={handleCreateCategory}
-    handleUpdateProduct={handleUpdateProduct}
-    handleToggleProductActive={handleToggleProductActive}
-  />
-)}
-
-        {/* ORDERS */}
-        {activeTab === "orders" && (
-  <OrdersTab
-    cardStyle={cardStyle}
-    orders={orders}
-    loadingOrders={loadingOrders}
-    ordersError={ordersError}
-    formatCustomerLabel={formatCustomerLabel}
-    handleUpdateOrderStatus={handleUpdateOrderStatus}
-  />
-)}
       </div>
     </div>
   );
