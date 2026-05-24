@@ -87,17 +87,21 @@ export default function NotificationBell() {
     <div style={{ position: "relative", marginLeft: 12 }}>
       <button
         onClick={toggleOpen}
+        title="Notifications"
         style={{
           position: "relative",
           borderRadius: "50%",
-          width: 32,
-          height: 32,
+          width: 36,
+          height: 36,
           border: "1px solid #ddd",
           background: "#fff",
           cursor: "pointer",
+          fontSize: 16,
+          fontWeight: 800,
+          lineHeight: 1,
         }}
       >
-        Alert
+        !
         {unreadCount > 0 && (
           <span
             style={{

@@ -45,10 +45,9 @@ export default function TopBar({ title }: TopBarProps) {
           </div>
         )}
       </div>
-      <div style={{ display: "flex", alignItems: "center" }}>
-  {/* existing title / user info */}
-  <NotificationBell />
-      <LogoutButton />
+      <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+        <NotificationBell />
+        <LogoutButton />
       </div>
     </header>
   );

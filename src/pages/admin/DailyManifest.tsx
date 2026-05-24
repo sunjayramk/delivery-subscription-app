@@ -30,24 +30,32 @@ export default function DailyManifest() {
   const [selectedDateStr, setSelectedDateStr] = useState<string>(new Date().toISOString().split("T")[0]);
 
   // Load Subscriptions AND One-Time Orders for the selected date
+  // 1. Fetch ALL Subscriptions ONCE when the component opens
   useEffect(() => {
-    async function fetchManifestData() {
+    async function fetchSubscriptions() {
       if (!user?.tenantId) return;
-      setLoading(true);
       try {
-        // 1. Fetch all ACTIVE subscriptions
         const subQ = query(
           collection(db, "tenants", user.tenantId, "subscriptions"),
           where("isActive", "==", true)
         );
         const subSnap = await getDocs(subQ);
         const subs: Subscription[] = [];
-        subSnap.forEach(doc => {
-          subs.push({ id: doc.id, ...doc.data() } as Subscription);
-        });
+        subSnap.forEach(doc => subs.push({ id: doc.id, ...doc.data() } as Subscription));
         setSubscriptions(subs);
+      } catch (error) {
+        console.error("Error fetching subscriptions:", error);
+      }
+    }
+    fetchSubscriptions();
+  }, [user]); // Notice selectedDateStr is NOT here! It only runs once.
 
-        // 2. Fetch all Orders placed for the specific selected date
+  // 2. Fetch One-Time Orders EVERY TIME the date changes
+  useEffect(() => {
+    async function fetchDailyOrders() {
+      if (!user?.tenantId) return;
+      setLoading(true);
+      try {
         const ordQ = query(
           collection(db, "tenants", user.tenantId, "orders"),
           where("date", "==", selectedDateStr)
@@ -56,22 +64,20 @@ export default function DailyManifest() {
         const orders: any[] = [];
         ordSnap.forEach(doc => {
           const data = doc.data();
-          // Only pull in "one-time" manual cart orders that aren't cancelled
           if (data.type === "one-time" && data.status !== "cancelled") {
              orders.push({ id: doc.id, ...data });
           }
         });
         setOneTimeOrders(orders);
-
       } catch (error) {
-        console.error("Error fetching manifest data:", error);
+        console.error("Error fetching orders:", error);
       } finally {
         setLoading(false);
       }
     }
-    fetchManifestData();
-  }, [user, selectedDateStr]); // Re-runs every time you change the date!
-
+    fetchDailyOrders();
+  }, [user, selectedDateStr]); // This only fetches that specific day's orders!
+  
   // --- THE CORE LOGIC ENGINE ---
   const manifestData = useMemo(() => {
     const targetDate = new Date(selectedDateStr);

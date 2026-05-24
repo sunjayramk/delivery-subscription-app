@@ -92,7 +92,7 @@ export default function DashboardTab() {
 
   const KpiCard = ({ title, value, subtitle, icon, color, bg }: any) => (
     <div style={{ background: "#fff", padding: 24, borderRadius: 16, border: `1px solid ${bg}`, boxShadow: "0 4px 6px -1px rgba(0,0,0,0.05)", display: "flex", alignItems: "flex-start", gap: 16, position: "relative", overflow: "hidden" }}>
-      <div style={{ width: 48, height: 48, borderRadius: 12, background: bg, color: color, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 24, fontWeight: "bold" }}>
+      <div style={{ width: 48, height: 48, borderRadius: 12, background: bg, color: color, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 13, fontWeight: 800, letterSpacing: 0.5 }}>
         {icon}
       </div>
       <div>
@@ -108,7 +108,7 @@ export default function DashboardTab() {
     <div style={{ maxWidth: 1200, margin: "0 auto", padding: "24px 16px" }}>
       
       <div style={{ marginBottom: 24 }}>
-        <h1 style={{ margin: "0 0 8px 0", fontSize: 24, color: "#111827" }}>Stats Business Command Center</h1>
+        <h1 style={{ margin: "0 0 8px 0", fontSize: 24, color: "#111827" }}>Business Command Center</h1>
         <p style={{ margin: 0, color: "#6b7280", fontSize: 14 }}>Live metrics for today's operations and financial health.</p>
       </div>
 
@@ -118,25 +118,25 @@ export default function DashboardTab() {
           title="Today's Orders" 
           value={todayOrders} 
           subtitle="Total Dispatches" 
-          icon="Package" color="#2563eb" bg="#eff6ff" 
+          icon="ORD" color="#2563eb" bg="#eff6ff" 
         />
         <KpiCard 
           title="Undelivered" 
           value={undeliveredOrders} 
           subtitle="Pending on Route" 
-          icon="Delivery" color="#d97706" bg="#fef3c7" 
+          icon="DEL" color="#d97706" bg="#fef3c7" 
         />
         <KpiCard 
           title="Total Outstanding" 
           value={`Rs.${totalOutstanding.toFixed(0)}`} 
           subtitle="Market Credit / Debt" 
-          icon="$" color="#dc2626" bg="#fef2f2" 
+          icon="Rs" color="#dc2626" bg="#fef2f2" 
         />
         <KpiCard 
           title="Low Balance" 
           value={lowBalanceCount} 
           subtitle="Customers At Risk" 
-          icon="!" color="#ea580c" bg="#ffedd5" 
+          icon="LOW" color="#ea580c" bg="#ffedd5" 
         />
       </div>
 
@@ -145,7 +145,7 @@ export default function DashboardTab() {
         
         {/* Sales & Approvals */}
         <div style={{ background: "#fff", padding: 24, borderRadius: 16, border: "1px solid #e5e7eb", boxShadow: "0 2px 4px rgba(0,0,0,0.02)" }}>
-          <h3 style={{ margin: "0 0 20px 0", fontSize: 16, color: "#111827", display: "flex", alignItems: "center", gap: 8 }}>Trend Financial & Approvals</h3>
+          <h3 style={{ margin: "0 0 20px 0", fontSize: 16, color: "#111827", display: "flex", alignItems: "center", gap: 8 }}>Financials & Approvals</h3>
           
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "12px 0", borderBottom: "1px solid #f3f4f6" }}>
             <div>
@@ -174,22 +174,22 @@ export default function DashboardTab() {
 
         {/* Quick Action Shortcuts */}
         <div style={{ background: "#fff", padding: 24, borderRadius: 16, border: "1px solid #e5e7eb", boxShadow: "0 2px 4px rgba(0,0,0,0.02)" }}>
-          <h3 style={{ margin: "0 0 20px 0", fontSize: 16, color: "#111827", display: "flex", alignItems: "center", gap: 8 }}>Fast Quick Actions</h3>
+          <h3 style={{ margin: "0 0 20px 0", fontSize: 16, color: "#111827", display: "flex", alignItems: "center", gap: 8 }}>Quick Actions</h3>
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
             <button style={{ padding: 16, background: "#f9fafb", border: "1px solid #e5e7eb", borderRadius: 12, cursor: "pointer", display: "flex", flexDirection: "column", alignItems: "center", gap: 8, transition: "all 0.2s" }}>
-              <span style={{ fontSize: 24 }}>Inbox</span>
+              <span style={{ fontSize: 18, fontWeight: 800 }}>Stock</span>
               <span style={{ fontSize: 13, fontWeight: 600, color: "#374151" }}>Stock Report</span>
             </button>
             <button style={{ padding: 16, background: "#f9fafb", border: "1px solid #e5e7eb", borderRadius: 12, cursor: "pointer", display: "flex", flexDirection: "column", alignItems: "center", gap: 8, transition: "all 0.2s" }}>
-              <span style={{ fontSize: 24 }}>List</span>
+              <span style={{ fontSize: 18, fontWeight: 800 }}>Invoices</span>
               <span style={{ fontSize: 13, fontWeight: 600, color: "#374151" }}>Generate Invoices</span>
             </button>
             <button style={{ padding: 16, background: "#f9fafb", border: "1px solid #e5e7eb", borderRadius: 12, cursor: "pointer", display: "flex", flexDirection: "column", alignItems: "center", gap: 8, transition: "all 0.2s" }}>
-              <span style={{ fontSize: 24 }}>Delivery</span>
+              <span style={{ fontSize: 18, fontWeight: 800 }}>Dispatch</span>
               <span style={{ fontSize: 13, fontWeight: 600, color: "#374151" }}>Route Dispatch</span>
             </button>
             <button style={{ padding: 16, background: "#f9fafb", border: "1px solid #e5e7eb", borderRadius: 12, cursor: "pointer", display: "flex", flexDirection: "column", alignItems: "center", gap: 8, transition: "all 0.2s" }}>
-              <span style={{ fontSize: 24 }}>Alert</span>
+              <span style={{ fontSize: 18, fontWeight: 800 }}>Reminders</span>
               <span style={{ fontSize: 13, fontWeight: 600, color: "#374151" }}>Send Reminders</span>
             </button>
           </div>

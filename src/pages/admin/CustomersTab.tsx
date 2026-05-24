@@ -20,6 +20,16 @@ interface Customer {
   customDeliveryFeeAmount?: number;
 }
 
+function readDate(value: any) {
+  if (value?.toDate) return value.toDate();
+  if (value instanceof Date) return value;
+  if (typeof value === "string" || typeof value === "number") {
+    const parsed = new Date(value);
+    if (!Number.isNaN(parsed.getTime())) return parsed;
+  }
+  return new Date();
+}
+
 export default function Customers() {
   const { user } = useAuth();
   const [customers, setCustomers] = useState<Customer[]>([]);
@@ -60,57 +70,44 @@ export default function Customers() {
   const [addRoute, setAddRoute] = useState("");
   const [isAdding, setIsAdding] = useState(false);
 
-  // 1. LOAD ALL CUSTOMERS
-  useEffect(() => {
-    async function loadData() {
-      if (!user?.tenantId) return;
-      setLoading(true);
-      try {
-        const rQ = query(collection(db, "tenants", user.tenantId, "routes"));
-        const rSnap = await getDocs(rQ);
-        const routesList = rSnap.docs.map(d => ({ id: d.id, name: d.data().name }));
-        setAvailableRoutes(routesList);
+  // 1. LOAD ALL CUSTOMERS (Simplified)
+useEffect(() => {
+  async function loadData() {
+    if (!user?.tenantId) return;
+    setLoading(true);
+    try {
+      // Fetch Routes first
+      const rQ = query(collection(db, "tenants", user.tenantId, "routes"));
+      const rSnap = await getDocs(rQ);
+      setAvailableRoutes(rSnap.docs.map(d => ({ id: d.id, name: d.data().name })));
 
-        const assignQ = query(collection(db, "tenants", user.tenantId, "customerAssignments"));
-        const assignSnap = await getDocs(assignQ);
-        const routeMap: Record<string, any> = {};
-        assignSnap.forEach(d => { 
-          const data = d.data();
-          routeMap[data.customerId] = { routeName: data.routeName || "Unassigned", hasCustomDeliveryFee: data.hasCustomDeliveryFee || false, customDeliveryFeeAmount: data.customDeliveryFeeAmount || 0 }; 
-        });
+      // Fetch tenant users with the same simple query used by the main admin dashboard.
+      // Filtering the role locally avoids needing a compound Firestore index for this tab.
+      const usersQ = query(collection(db, "users"), where("tenantId", "==", user.tenantId));
+      const usersSnap = await getDocs(usersQ);
+      
+      const rawList: Customer[] = usersSnap.docs.filter(docSnap => docSnap.data().role === "customer").map(docSnap => {
+        const data = docSnap.data();
+        return {
+          id: docSnap.id,
+          name: data.name || "Unknown",
+          email: data.email || "",
+          phone: data.phone || "-",
+          createdAt: readDate(data.createdAt),
+          walletBalance: 0, // We will calculate this when they click 'View'
+          routeName: data.routeName || "Unassigned",
+          status: "Active"
+        };
+      });
 
-        const usersQ = query(collection(db, "users"));
-        const usersSnap = await getDocs(usersQ);
-        
-        const rawList: Customer[] = [];
-        usersSnap.forEach(docSnap => {
-          const data = docSnap.data();
-          if (data.tenantId === user.tenantId && data.role === "customer") {
-            const assignment = routeMap[docSnap.id] || {};
-            rawList.push({
-              id: docSnap.id, name: data.name || "Unknown", email: data.email || "", phone: data.phone || "-", createdAt: data.createdAt?.toDate() || new Date(), walletBalance: 0, routeId: data.routeId || null, routeName: data.routeName || assignment.routeName || "Unassigned", hasCustomDeliveryFee: assignment.hasCustomDeliveryFee, customDeliveryFeeAmount: assignment.customDeliveryFeeAmount, status: "Active", 
-            });
-          }
-        });
-
-        await Promise.all(rawList.map(async (c) => {
-          const filters = [where("tenantId", "==", user.tenantId), where("customerId", "==", c.id)];
-          let balance = 0;
-          try {
-            const snap1 = await getDocs(query(collection(db, "tenants", user.tenantId!, "walletTransactions"), ...filters));
-            snap1.forEach(d => { const amt = Number(d.data().amount) || 0; if ((d.data().type || "").toLowerCase() === "debit") balance += amt; else balance -= amt; });
-            const snap2 = await getDocs(query(collection(db, "tenants", user.tenantId!, "billingTransactions"), ...filters));
-            snap2.forEach(d => { const amt = Number(d.data().amount) || 0; const rawType = (d.data().type || "").toLowerCase(); if (rawType === "order_charge" || rawType === "debit") balance += amt; else balance -= amt; });
-          } catch (e) {}
-          c.walletBalance = balance;
-        }));
-        
-        rawList.sort((a,b) => b.createdAt.getTime() - a.createdAt.getTime());
-        setCustomers(rawList);
-      } catch (err) { setError("Failed to load customer data."); } finally { setLoading(false); }
-    }
-    loadData();
-  }, [user]);
+      setCustomers(rawList);
+    } catch (err: any) { 
+      console.error("Load Error:", err);
+      setError(err?.message ? `Failed to load customer data: ${err.message}` : "Failed to load customer data."); 
+    } finally { setLoading(false); }
+  }
+  loadData();
+}, [user]);
 
   // 2. LOAD DEEP CUSTOMER DETAILS ON CLICK
   useEffect(() => {
@@ -119,22 +116,22 @@ export default function Customers() {
       setCustomerDetailsLoading(true);
       setPanelTab("settings"); // Reset tab
       try {
-        const filters = [where("tenantId", "==", user.tenantId), where("customerId", "==", selectedCustomer.id)];
+        const customerFilter = where("customerId", "==", selectedCustomer.id);
 
         // Addresses
-        const addrSnap = await getDocs(query(collection(db, "tenants", user.tenantId, "addresses"), ...filters));
+        const addrSnap = await getDocs(query(collection(db, "tenants", user.tenantId, "addresses"), customerFilter));
         setCustomerAddresses(addrSnap.docs.map(d => ({ id: d.id, ...d.data() })));
 
         // Subscriptions
-        const subsSnap = await getDocs(query(collection(db, "tenants", user.tenantId, "subscriptions"), ...filters));
+        const subsSnap = await getDocs(query(collection(db, "tenants", user.tenantId, "subscriptions"), customerFilter));
         setCustomerSubscriptions(subsSnap.docs.map(d => ({ id: d.id, ...d.data() })));
 
         // Transactions (Ledger)
         const txs: any[] = [];
-        const wSnap = await getDocs(query(collection(db, "tenants", user.tenantId, "walletTransactions"), ...filters));
+        const wSnap = await getDocs(query(collection(db, "tenants", user.tenantId, "walletTransactions"), customerFilter));
         wSnap.forEach(d => txs.push({ id: d.id, ...d.data(), type: (d.data().type||"").toLowerCase() === "debit" ? "debit" : "credit" }));
         
-        const bSnap = await getDocs(query(collection(db, "tenants", user.tenantId, "billingTransactions"), ...filters));
+        const bSnap = await getDocs(query(collection(db, "tenants", user.tenantId, "billingTransactions"), customerFilter));
         bSnap.forEach(d => {
            const rawType = (d.data().type||"").toLowerCase();
            txs.push({ id: d.id, ...d.data(), type: (rawType === "order_charge" || rawType === "debit") ? "debit" : "credit" });

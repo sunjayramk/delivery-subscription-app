@@ -244,7 +244,6 @@ export default function CustomerHome() {
 
   useEffect(() => {
     async function loadWallet() {
-      if (activeTab !== "wallet" && activeTab !== "dashboard") return;
       if (!user || !user.tenantId) { setWalletLoading(false); return; }
       setWalletLoading(true); setWalletError("");
       try {
@@ -287,7 +286,7 @@ export default function CustomerHome() {
       } catch (err) { setWalletError("Failed to load wallet."); } finally { setWalletLoading(false); }
     }
     void loadWallet();
-  }, [user, activeTab]);
+  }, [user]);
 
   useEffect(() => {
     async function loadProducts() {
@@ -597,7 +596,9 @@ export default function CustomerHome() {
           
           {/* UPDATED WALLET PILL */}
           <div onClick={() => setActiveTab("wallet")} style={{ background: walletBalance > 0 ? "#fef2f2" : walletBalance < 0 ? "#dcfce7" : "#eff6ff", padding: "6px 12px", borderRadius: 16, fontSize: 13, fontWeight: 800, color: walletBalance > 0 ? "#dc2626" : walletBalance < 0 ? "#16a34a" : "#2563eb", border: walletBalance > 0 ? "1px solid #fecaca" : walletBalance < 0 ? "1px solid #bbf7d0" : "1px solid #bfdbfe", cursor: "pointer", boxShadow: "0 2px 4px rgba(0,0,0,0.02)" }}>
-            {walletBalance > 0 
+            {walletLoading
+              ? "Loading..."
+              : walletBalance > 0 
               ? `-Rs.${walletBalance.toFixed(2)} Due` 
               : walletBalance < 0 
                 ? `Rs.${Math.abs(walletBalance).toFixed(2)} Cr` 
@@ -717,7 +718,7 @@ export default function CustomerHome() {
         </div>
 
         {/* STICKY BOTTOM NAVIGATION */}
-        <div style={{ background: "#fff", display: "flex", justifyContent: "space-around", alignItems: "center", padding: "12px 0", paddingBottom: "calc(12px + env(safe-area-inset-bottom))", position: "fixed", bottom: 0, width: "100%", maxWidth: 480, borderTop: "1px solid #e5e7eb", zIndex: 10 }}>
+        <div style={{ background: "#fff", display: "flex", justifyContent: "space-around", alignItems: "center", padding: "10px 12px", paddingBottom: "calc(10px + env(safe-area-inset-bottom))", position: "fixed", bottom: 0, width: "100%", maxWidth: 480, borderTop: "1px solid #e5e7eb", zIndex: 10, boxSizing: "border-box" }}>
           <NavItem label="Shop" isActive={activeTab === "products" || activeTab === "dashboard" || activeTab === "cart"} onClick={() => setActiveTab("products")} />
           <NavItem label="Subscribe" isActive={activeTab === "subscriptions"} onClick={() => setActiveTab("subscriptions")} />
           <NavItem label="Wallet" isActive={activeTab === "wallet"} onClick={() => setActiveTab("wallet")} />
@@ -732,9 +733,23 @@ export default function CustomerHome() {
 // Module Helper Component for Bottom Nav
 function NavItem({ label, isActive, onClick }: { label: string, isActive: boolean, onClick: () => void }) {
   return (
-    <div onClick={onClick} style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 6, cursor: "pointer", width: "25%", minHeight: 52, transition: "all 0.2s" }}>
-      <div style={{ width: 24, height: 3, borderRadius: 999, background: isActive ? "#2563eb" : "transparent" }} />
-      <div style={{ fontSize: 12, fontWeight: 800, color: isActive ? "#2563eb" : "#6b7280" }}>{label}</div>
-    </div>
+    <button
+      type="button"
+      onClick={onClick}
+      style={{
+        border: "none",
+        background: isActive ? "#eff6ff" : "transparent",
+        color: isActive ? "#2563eb" : "#6b7280",
+        borderRadius: 12,
+        cursor: "pointer",
+        width: "25%",
+        minHeight: 44,
+        fontSize: 12,
+        fontWeight: 800,
+        transition: "all 0.2s",
+      }}
+    >
+      {label}
+    </button>
   );
 }

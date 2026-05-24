@@ -452,17 +452,31 @@ export default function AdminDashboard() {
     setBanners(snap.docs.map(d => ({ id: d.id, ...d.data() })));
   }
 
-  // FIX 3: Trigger the loaders when the tenant is found
+  // LAZY LOADING ENGINE: Only fetch data when the user actually clicks the tab!
+  
+  // 1. Products & Settings Data (Loads on Dashboard or Products tab)
   useEffect(() => {
-    if (tenant) {
-      loadProducts(tenant.id); 
-      loadOrders(tenant.id); 
-      loadAccounts(tenant.id);
-      loadUsersAndAssignments(tenant.id); 
-      loadCategories(tenant.id); 
-      loadBanners(tenant.id); // <-- This is crucial!
+    if (tenant && (activeTab === "products" || activeTab === "dashboard")) {
+      if (products.length === 0) loadProducts(tenant.id);
+      if (categories.length === 0) loadCategories(tenant.id);
+      if (banners.length === 0) loadBanners(tenant.id);
     }
-  }, [tenant]);
+  }, [tenant, activeTab]);
+
+  // 2. Orders Data
+  useEffect(() => {
+    if (tenant && activeTab === "orders") {
+      if (orders.length === 0) loadOrders(tenant.id);
+    }
+  }, [tenant, activeTab]);
+
+  // 3. Customer & Billing Data
+  useEffect(() => {
+    if (tenant && (activeTab === "billing" || activeTab === "customers")) {
+      if (accounts.length === 0) loadAccounts(tenant.id);
+      if (tenantCustomers.length === 0) loadUsersAndAssignments(tenant.id);
+    }
+  }, [tenant, activeTab]);
 
   async function handleUploadBanner(file: File) {
     if (!tenant) return;

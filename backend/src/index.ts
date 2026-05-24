@@ -1,10 +1,99 @@
 import * as admin from "firebase-admin";
 import { onSchedule } from "firebase-functions/v2/scheduler";
 
-admin.initializeApp();
+// 1. Clean Initialization (Run only once)
+if (!admin.apps.length) {
+  admin.initializeApp(); 
+}
 const db = admin.firestore();
 
-// ===== Helper: should this subscription run on a specific date? =====
+// ============================================================================
+// AUTOMATION 1: MONTHLY BILLING (Runs at Midnight on the 1st of every month)
+// ============================================================================
+export const autoGenerateMonthlyInvoices = onSchedule(
+  {
+    schedule: "0 0 1 * *", // 1st of every month at 00:00
+    timeZone: "Asia/Kolkata",
+  },
+  async (event) => {
+    try {
+      const now = new Date();
+      // If it is running on May 1st, we are billing for April (Month 4)
+      let year = now.getFullYear();
+      let month = now.getMonth(); // getMonth() is 0-indexed (May = 4, which is perfect for April billing)
+      if (month === 0) { month = 12; year -= 1; } // Handle January rollbacks to December
+
+      console.log(`Starting automated billing for ${month}/${year}`);
+
+      // 1. Find every active Store (Tenant)
+      const tenantsSnap = await db.collection("tenants").where("isActive", "==", true).get();
+
+      for (const tenantDoc of tenantsSnap.docs) {
+        const tenantId = tenantDoc.id;
+
+        // 2. Find all customers for this store
+        const usersSnap = await db.collection("users")
+          .where("tenantId", "==", tenantId)
+          .where("role", "==", "customer")
+          .get();
+
+        // 3. Calculate and generate the invoice for each customer
+        for (const userDoc of usersSnap.docs) {
+          const customerId = userDoc.id;
+          
+          const start = admin.firestore.Timestamp.fromDate(new Date(year, month - 1, 1));
+          const end = admin.firestore.Timestamp.fromDate(new Date(year, month, 1));
+
+          // Get their billing transactions
+          const txQ = await db.collection("tenants").doc(tenantId).collection("billingTransactions")
+            .where("customerId", "==", customerId)
+            .where("createdAt", ">=", start)
+            .where("createdAt", "<", end)
+            .get();
+
+          let totalDebits = 0;
+          let totalCredits = 0;
+
+          txQ.forEach((docSnap) => {
+            const data = docSnap.data();
+            const type = (data.type || "").toString().toLowerCase();
+            const amount = typeof data.amount === "number" ? data.amount : 0;
+            if (type === "order_charge" || type === "debit") { totalDebits += amount; } 
+            else { totalCredits += amount; }
+          });
+
+          const closingBalance = totalDebits - totalCredits;
+
+          // Skip if there is absolutely zero activity and zero balance
+          if (totalDebits === 0 && totalCredits === 0 && closingBalance === 0) continue;
+
+          // Save the generated invoice to the database
+          await db.collection("tenants").doc(tenantId).collection("invoices").add({
+            tenantId,
+            customerId,
+            periodYear: year,
+            periodMonth: month,
+            deliveryCharge: 0, 
+            totalDebits,
+            totalCredits,
+            closingBalance,
+            createdAt: admin.firestore.FieldValue.serverTimestamp(),
+          });
+        }
+      }
+      console.log("Automated monthly billing complete!");
+    } catch (error) {
+      console.error("Billing Automation Error:", error);
+    }
+  }
+);
+
+
+// ============================================================================
+// AUTOMATION 2: DAILY ORDERS (Your existing code!)
+// ============================================================================
+
+// Helper: should this subscription run on a specific date?
 function shouldRunOnDate(
   scheduleType: string,
   scheduleDays: number[] | undefined,
@@ -73,8 +162,6 @@ export const generateDailyOrders = onSchedule(
           if (data.customerId && data.routeName) routeMap[data.customerId] = data.routeName;
         });
 
-        
-
         const ordersToCreate = new Map<string, any>();
 
         // 3. Loop through all 7 days
@@ -107,7 +194,6 @@ export const generateDailyOrders = onSchedule(
             const shift = data.shift || "Morning";
             const uniqueKey = `${customerId}_${shift}_${dateStr}`;
 
-           
             // Group multiple subscriptions for the same person/day into one Order
             if (!ordersToCreate.has(uniqueKey)) {
               const routeName = routeMap[customerId] || "";
@@ -147,15 +233,12 @@ export const generateDailyOrders = onSchedule(
           let totalCount = 0;
 
           for (const [uniqueKey, orderData] of ordersToCreate.entries()) {
-            // Use the unique key (customerId_shift_date) as the actual document ID
             const newOrderRef = db.collection("tenants").doc(tenantId).collection("orders").doc(uniqueKey);
-
-            // Use { merge: true } so if the order already exists, it safely ignores it instead of creating a duplicate
             batchChunks[chunkIndex].set(newOrderRef, orderData, { merge: true });
             opCount++;
             totalCount++;
 
-            if (opCount === 450) { // Safety buffer before hitting 500
+            if (opCount === 450) { 
               batchChunks.push(db.batch());
               chunkIndex++;
               opCount = 0;
