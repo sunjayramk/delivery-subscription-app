@@ -25,6 +25,8 @@ import OrdersTab from "./OrdersTab";
 import DashboardTab from "./DashboardTab";
 import ProfileTab from "./ProfileTab";
 import CartTab from "./CartTab";
+import SubscriptionModal from "./SubscriptionModal";
+import { useCart } from "../../context/CartContext";
 
 // Authentication & Tenant Bouncers
 import { useTenantResolver } from "../../hooks/useTenantResolver";
@@ -137,7 +139,7 @@ export default function CustomerHome() {
   
   // Products & Orders State
   const [products, setProducts] = useState<Product[]>([]);
-  const [cart, setCart] = useState<Record<string, number>>({});
+  const { cart, clearCart, cartItemsCount } = useCart();
   const [isCheckingOut, setIsCheckingOut] = useState(false);
   const [checkoutShift, setCheckoutShift] = useState<"Morning" | "Evening">("Morning");
   const [categories, setCategories] = useState<{ id: string; name: string }[]>([]);
@@ -155,15 +157,7 @@ export default function CustomerHome() {
   const [errorSubs, setErrorSubs] = useState("");
 
   const [subProduct, setSubProduct] = useState<Product | null>(null);
-  const [subQty, setSubQty] = useState("1");
-  const [subSchedule, setSubSchedule] = useState<string>("daily");
-  const [subCustomDays, setSubCustomDays] = useState<number[]>([]);
-  const [subDayQuantities, setSubDayQuantities] = useState<Record<number, string>>({});
-  const [subAddressId, setSubAddressId] = useState<string>("");
-  const [subStartDate, setSubStartDate] = useState<string>("");
-  const [savingSub, setSavingSub] = useState(false);
-  const [subFormError, setSubFormError] = useState("");
-
+  
   // Vacation Mode State
   const [vacationFrom, setVacationFrom] = useState("");
   const [vacationTo, setVacationTo] = useState("");
@@ -173,16 +167,6 @@ export default function CustomerHome() {
   const [addresses, setAddresses] = useState<Address[]>([]);
   const [loadingAddresses, setLoadingAddresses] = useState(true);
   const [errorAddresses, setErrorAddresses] = useState("");
-
-  const [newAddrLabel, setNewAddrLabel] = useState("");
-  const [newAddrLine1, setNewAddrLine1] = useState("");
-  const [newAddrArea, setNewAddrArea] = useState("");
-  const [newAddrCity, setNewAddrCity] = useState("");
-  const [newAddrPincode, setNewAddrPincode] = useState("");
-  const [newAddrPhone, setNewAddrPhone] = useState("");
-  const [newAddrMapUrl, setNewAddrMapUrl] = useState("");
-  const [newAddrIsDefault, setNewAddrIsDefault] = useState(false);
-  const [savingAddress, setSavingAddress] = useState(false);
 
   // Wallet State
   const [walletLoading, setWalletLoading] = useState(true);
@@ -196,7 +180,7 @@ export default function CustomerHome() {
   const [toastMessage, setToastMessage] = useState("");
   const [toastType, setToastType] = useState<"success" | "error" | "info">("success");
   const [activeTab, setActiveTab] = useState<string>("products");
-  const [subscribeView, setSubscribeView] = useState<"calendar" | "plans">("calendar");
+  const [subscribeView, setSubscribeView] = useState<"calendar" | "plans">("calendar"); // eslint-disable-next-line @typescript-eslint/no-unused-vars
 
   // --- NEW: ONBOARDING STATE ---
   const [needsOnboarding, setNeedsOnboarding] = useState(false);
@@ -500,21 +484,7 @@ export default function CustomerHome() {
   }
 
   // Address Handlers
-  async function handleAddAddress(e: React.FormEvent) {
-    e.preventDefault();
-    if (!user) return;
-    if (!newAddrLabel.trim() || !newAddrLine1.trim()) { setErrorAddresses("Please fill at least label and address line."); return; }
-    setSavingAddress(true); setErrorAddresses("");
-    try {
-      await addDoc(collection(db, "tenants", user.tenantId!, "addresses"), {
-        customerId: user.uid, tenantId: user.tenantId ?? null, label: newAddrLabel.trim(), line1: newAddrLine1.trim(), area: newAddrArea.trim(), city: newAddrCity.trim(), pincode: newAddrPincode.trim(), phone: newAddrPhone.trim(), mapUrl: newAddrMapUrl.trim(), isDefault: newAddrIsDefault, createdAt: serverTimestamp(),
-      });
-      setNewAddrLabel(""); setNewAddrLine1(""); setNewAddrArea(""); setNewAddrCity(""); setNewAddrPincode(""); setNewAddrPhone(""); setNewAddrMapUrl(""); setNewAddrIsDefault(false);
-      await reloadAddresses();
-    } catch (err) { setErrorAddresses("Failed to add address."); } finally { setSavingAddress(false); }
-  }
-
-  async function handleSetDefaultAddress(addressId: string) {
+    async function handleSetDefaultAddress(addressId: string) {
     if (!user) return;
     try {
       await updateDoc(doc(db, "tenants", user.tenantId!, "addresses", addressId), { isDefault: true, updatedAt: serverTimestamp() });
@@ -551,55 +521,10 @@ export default function CustomerHome() {
 
   // Subscription Handlers
   function startSubscription(product: Product) {
-    setSubProduct(product); setSubQty("1"); setSubSchedule("daily"); setSubCustomDays([]); setSubDayQuantities({}); setSubAddressId(""); setSubStartDate(""); setSubFormError("");
-    setTimeout(() => { document.getElementById("sub-form")?.scrollIntoView({ behavior: "smooth" }); }, 100);
+    setSubProduct(product); 
   }
 
-  function toggleCustomDay(dayIndex: number) {
-    setSubCustomDays((prev) => prev.includes(dayIndex) ? prev.filter((d) => d !== dayIndex) : [...prev, dayIndex]);
-  }
-
-  function setDayQuantityInput(dayIndex: number, value: string) {
-    setSubDayQuantities((prev) => ({ ...prev, [dayIndex]: value }));
-  }
-
-  async function handleCreateSubscription(e: React.FormEvent) {
-    e.preventDefault();
-    if (!user || !user.tenantId || !subProduct) return;
-    if (!subQty.trim()) { setSubFormError("Please enter quantity."); return; }
-    const qtyNumber = Number(subQty);
-    if (Number.isNaN(qtyNumber) || qtyNumber <= 0) { setSubFormError("Quantity must be a positive number."); return; }
-    if (subSchedule === "custom" && subCustomDays.length === 0) { setSubFormError("Please select at least one day for custom schedule."); return; }
-    if (!subAddressId) { setSubFormError("Please select a delivery address."); return; }
-
-    const selectedAddress = addresses.find((a) => a.id === subAddressId);
-    if (!selectedAddress) { setSubFormError("Selected address not found."); return; }
-
-    const dayQuantities: Record<string, number> = {};
-    Object.entries(subDayQuantities).forEach(([dayIndexStr, val]) => {
-      const v = (val ?? "").trim();
-      if (!v) return;
-      const num = Number(v);
-      if (!Number.isNaN(num) && num > 0) { dayQuantities[String(dayIndexStr)] = num; }
-    });
-
-    setSavingSub(true); setSubFormError("");
-    try {
-      const startDateValue = subStartDate ? new Date(subStartDate) : new Date();
-      const baseData: any = {
-        tenantId: user.tenantId, customerId: user.uid, productId: subProduct.id, productName: subProduct.name, unit: subProduct.unit,
-        price: subProduct.price, qty: qtyNumber, scheduleType: subSchedule, isActive: true, createdAt: serverTimestamp(), startDate: startDateValue, deliveryAddress: { label: selectedAddress.label, line1: selectedAddress.line1, area: selectedAddress.area || "", city: selectedAddress.city || "", pincode: selectedAddress.pincode || "", phone: selectedAddress.phone || "", mapUrl: selectedAddress.mapUrl || "" },
-      };
-      if (subSchedule === "custom") { baseData.scheduleDays = subCustomDays; }
-      if (Object.keys(dayQuantities).length > 0) { baseData.dayQuantities = dayQuantities; }
-
-      await addDoc(collection(db, "tenants", user.tenantId, "subscriptions"), baseData);
-      setSubProduct(null); setSubQty("1"); setSubSchedule("daily"); setSubCustomDays([]); setSubDayQuantities({}); setSubAddressId(""); setSubStartDate("");
-      await reloadSubscriptionsForCustomer();
-      showToast("Subscription created successfully!");
-    } catch (err) { setSubFormError("Failed to create subscription."); } finally { setSavingSub(false); }
-  }
-
+  
   function isPastCutoffTime(): boolean {
     if (!tenantSettings?.operations?.customerCutoffTime) return false; 
     const cutoffTime = tenantSettings.operations.customerCutoffTime; 
@@ -629,19 +554,7 @@ export default function CustomerHome() {
     } catch (err) { showToast("Failed to update date.", "error"); }
   }
 
-  // Cart & Checkout Handlers
-  const updateCartQty = (product: any, delta: number) => {
-    setCart((prev) => {
-      const currentQty = prev[product.id] || 0;
-      const newQty = Math.max(0, currentQty + delta);
-      const newCart = { ...prev };
-      if (newQty === 0) delete newCart[product.id];
-      else newCart[product.id] = newQty;
-      return newCart;
-    });
-  };
-
-  const handleCheckout = async (overrideAddressId?: string) => {
+    const handleCheckout = async (overrideAddressId?: string) => {
     if (cartItemsCount === 0 || !user || !user.tenantId) return;
     const selectedAddress = overrideAddressId ? addresses.find(a => a.id === overrideAddressId) : (addresses.find(a => a.isDefault) || addresses[0]);
     if (!selectedAddress) { showToast("Please add a delivery address in your Profile first!", "error"); setActiveTab("profile"); return; }
@@ -654,12 +567,11 @@ export default function CustomerHome() {
       await addDoc(collection(db, "tenants", user.tenantId, "orders"), {
         tenantId: user.tenantId, customerId: user.uid, customerName: user.name || "Customer", items: orderItems, totalAmount: cartTotal, status: "pending", type: "one-time", shift: checkoutShift, date: new Date().toISOString().split('T')[0], createdAt: serverTimestamp(), deliveryAddress: { label: selectedAddress.label, line1: selectedAddress.line1, area: selectedAddress.area || "", city: selectedAddress.city || "", pincode: selectedAddress.pincode || "", phone: selectedAddress.phone || "", mapUrl: selectedAddress.mapUrl || "" }
       });
-      setCart({}); showToast("Success Order placed successfully!"); setActiveTab("orders");
+      clearCart(); showToast("Success Order placed successfully!"); setActiveTab("orders");
     } catch (error) { showToast("Failed to place order. Please try again.", "error"); } finally { setIsCheckingOut(false); }
   };
 
   // Derived Values
-  const cartItemsCount = Object.values(cart).reduce((sum, qty) => sum + qty, 0);
   const cartTotal = Object.entries(cart).reduce((sum, [productId, qty]) => { const p = products.find(p => p.id === productId); return sum + (p ? p.price * qty : 0); }, 0);
   const activeSubs = subscriptions.filter((s) => s.isActive);
   const pausedSubs = subscriptions.filter((s) => !s.isActive);
@@ -699,7 +611,14 @@ export default function CustomerHome() {
           
           {(activeTab === "products" || activeTab === "dashboard") && (
             <div style={{ padding: "0 0 20px 0" }}>
-              <ProductsTab products={products} categories={categories} banners={banners} loadingProducts={loadingProducts} errorProducts={errorProducts} cart={cart} updateCartQty={updateCartQty} startSubscription={startSubscription} />
+              <ProductsTab 
+                products={products} 
+                categories={categories} 
+                banners={banners} 
+                loadingProducts={loadingProducts} 
+                errorProducts={errorProducts} 
+                startSubscription={startSubscription} 
+              />
               
               {cartItemsCount > 0 && (
                 <div style={{ position: "fixed", bottom: 80, left: 0, right: 0, margin: "0 auto", maxWidth: 448, padding: "0 16px", zIndex: 50 }}>
@@ -711,82 +630,39 @@ export default function CustomerHome() {
               )}
 
               {subProduct && (
-                <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.5)", zIndex: 100, display: "flex", alignItems: "flex-end", justifyContent: "center" }}>
-                   <section id="sub-form" style={{ width: "100%", maxWidth: 480, padding: 24, borderRadius: "24px 24px 0 0", background: "#fff", maxHeight: "85vh", overflowY: "auto", boxShadow: "0 -10px 40px rgba(0,0,0,0.2)" }}>
-                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}><h2 style={{ margin: 0, fontSize: 20 }}>Subscribe</h2><button onClick={() => setSubProduct(null)} style={{ background: "#f3f4f6", border: "none", borderRadius: "50%", width: 32, height: 32, fontSize: 16, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", color: "#4b5563" }}>x</button></div>
-                    <div style={{ background: "#eff6ff", padding: 12, borderRadius: 12, marginBottom: 16 }}><p style={{ margin: 0, color: "#1e3a8a", fontWeight: 600 }}>{subProduct.name} <span style={{ fontWeight: 400 }}>({subProduct.unit})</span></p><p style={{ margin: "4px 0 0 0", color: "#2563eb", fontWeight: 700, fontSize: 16 }}>Rs.{subProduct.price}</p></div>
-
-                    <form onSubmit={handleCreateSubscription} style={{ display: "flex", flexDirection: "column", gap: 16 }}>
-                      <div style={{ display: "flex", gap: 12 }}>
-                        <div style={{ flex: 1 }}><label style={{ fontSize: 12, fontWeight: 600, color: "#4b5563", display: "block", marginBottom: 6 }}>Start Date</label><input type="date" style={{ width: "100%", padding: 10, borderRadius: 8, border: "1px solid #d1d5db" }} value={subStartDate} min={new Date().toISOString().slice(0, 10)} onChange={(e) => setSubStartDate(e.target.value)} /></div>
-                        <div style={{ flex: 1 }}><label style={{ fontSize: 12, fontWeight: 600, color: "#4b5563", display: "block", marginBottom: 6 }}>Schedule</label><select style={{ width: "100%", padding: 10, borderRadius: 8, border: "1px solid #d1d5db", background: "#fff" }} value={subSchedule} onChange={(e) => { setSubSchedule(e.target.value); setSubDayQuantities({}); setSubCustomDays([]); }}><option value="daily">Daily</option><option value="alternate_days">Alternate days</option><option value="mon_fri">Mon to Friday</option><option value="weekends">Weekends</option><option value="custom">Custom days</option></select></div>
-                      </div>
-
-                      {(subSchedule === "daily" || subSchedule === "alternate_days") && (
-                        <div><label style={{ fontSize: 12, fontWeight: 600, color: "#4b5563", display: "block", marginBottom: 6 }}>Quantity per day</label><input style={{ width: "100%", padding: 10, borderRadius: 8, border: "1px solid #d1d5db" }} value={subQty} onChange={(e) => setSubQty(e.target.value)} /></div>
-                      )}
-
-                      {subSchedule === "custom" && (
-                        <div style={{ background: "#f9fafb", padding: 16, borderRadius: 12, border: "1px solid #e5e7eb" }}>
-                          <label style={{ fontSize: 12, fontWeight: 700, display: "block", marginBottom: 12 }}>Select days & quantity:</label>
-                          <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 12 }}>
-                            {DAY_LABELS.map((label, index) => (
-                              <div key={index} style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-                                <label style={{ border: subCustomDays.includes(index) ? "none" : "1px solid #d1d5db", borderRadius: 8, padding: "8px 0", textAlign: "center", cursor: "pointer", backgroundColor: subCustomDays.includes(index) ? "#111827" : "#fff", color: subCustomDays.includes(index) ? "#fff" : "#4b5563", fontSize: 13, fontWeight: 600 }}>
-                                  <input type="checkbox" checked={subCustomDays.includes(index)} onChange={() => toggleCustomDay(index)} style={{ display: "none" }} />{label}
-                                </label>
-                                {subCustomDays.includes(index) && ( <input style={{ width: "100%", padding: "6px 4px", fontSize: 12, textAlign: "center", borderRadius: 6, border: "1px solid #9ca3af" }} placeholder="Qty" value={subDayQuantities[index] ?? ""} onChange={(e) => setDayQuantityInput(index, e.target.value)} /> )}
-                              </div>
-                            ))}
-                          </div>
-                        </div>
-                      )}
-
-                      {(subSchedule === "mon_fri" || subSchedule === "weekends") && (
-                        <div style={{ background: "#f9fafb", padding: 16, borderRadius: 12, border: "1px solid #e5e7eb" }}>
-                          <label style={{ fontSize: 12, fontWeight: 700, display: "block", marginBottom: 12 }}>Custom Quantity (Optional)</label>
-                          <div style={{ display: "grid", gridTemplateColumns: "repeat(5, 1fr)", gap: 8 }}>
-                            {(subSchedule === "mon_fri" ? [1, 2, 3, 4, 5] : [0, 6]).map((index) => (
-                              <div key={index} style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 4 }}>
-                                <div style={{ fontSize: 12, fontWeight: 600, color: "#4b5563" }}>{DAY_LABELS[index]}</div>
-                                <input style={{ width: "100%", padding: 6, fontSize: 12, textAlign: "center", borderRadius: 6, border: "1px solid #d1d5db" }} placeholder={subQty || "1"} value={subDayQuantities[index] ?? ""} onChange={(e) => setDayQuantityInput(index, e.target.value)} />
-                              </div>
-                            ))}
-                          </div>
-                        </div>
-                      )}
-
-                      <div>
-                        <label style={{ fontSize: 12, fontWeight: 600, color: "#4b5563", display: "block", marginBottom: 6 }}>Delivery address</label>
-                        {addresses.length === 0 ? (
-                          <div style={{ background: "#fef2f2", color: "#dc2626", padding: 12, borderRadius: 8, fontSize: 13, fontWeight: 500 }}>Please add an address in your Profile first.</div>
-                        ) : (
-                          <select style={{ width: "100%", padding: 10, borderRadius: 8, border: "1px solid #d1d5db", background: "#fff" }} value={subAddressId} onChange={(e) => setSubAddressId(e.target.value)}>
-                            <option value="">- Select an address -</option>
-                            {addresses.map((a) => <option key={a.id} value={a.id}>{a.label} - {a.line1}</option>)}
-                          </select>
-                        )}
-                      </div>
-
-                      {subFormError && <div style={{ background: "#fef2f2", color: "#dc2626", padding: 10, borderRadius: 8, fontSize: 13, fontWeight: 600 }}>{subFormError}</div>}
-                      <button type="submit" disabled={savingSub} style={{ padding: "14px", borderRadius: 12, border: "none", background: "#2563eb", color: "#fff", fontWeight: 700, fontSize: 15, marginTop: 8, cursor: savingSub ? "not-allowed" : "pointer", boxShadow: "0 4px 12px rgba(37, 99, 235, 0.2)" }}>{savingSub ? "Processing..." : "Confirm Subscription"}</button>
-                    </form>
-                  </section>
-                </div>
+                <SubscriptionModal 
+                  product={subProduct}
+                  user={user}
+                  addresses={addresses}
+                  onClose={() => setSubProduct(null)}
+                  onSuccess={() => {
+                    setSubProduct(null);
+                    reloadSubscriptionsForCustomer();
+                    showToast("Subscription created successfully!");
+                  }}
+                />
               )}
             </div>
           )}
 
           {activeTab === "cart" && (
-            <CartTab cart={cart} products={products} updateCartQty={updateCartQty} addresses={addresses} checkoutShift={checkoutShift} setCheckoutShift={setCheckoutShift} handleCheckout={handleCheckout} isCheckingOut={isCheckingOut} setActiveTab={setActiveTab} cartTotal={cartTotal} />
+            <CartTab 
+              products={products} 
+              addresses={addresses} 
+              checkoutShift={checkoutShift} 
+              setCheckoutShift={setCheckoutShift} 
+              handleCheckout={handleCheckout} 
+              isCheckingOut={isCheckingOut} 
+              setActiveTab={setActiveTab} 
+            />
           )}
 
           {activeTab === "subscriptions" && (
             <div style={{ display: "flex", flexDirection: "column" }}>
               <div style={{ padding: "16px 16px 0 16px" }}>
                 <div style={{ display: "flex", background: "#f3f4f6", borderRadius: 12, padding: 4, border: "1px solid #e5e7eb" }}>
-                  <button onClick={() => setSubscribeView("calendar")} style={{ flex: 1, padding: "8px 0", borderRadius: 8, border: "none", background: subscribeView === "calendar" ? "#fff" : "transparent", color: subscribeView === "calendar" ? "#111827" : "#6b7280", fontWeight: 700, fontSize: 13, cursor: "pointer", boxShadow: subscribeView === "calendar" ? "0 2px 4px rgba(0,0,0,0.05)" : "none", transition: "all 0.2s" }}>Date Calendar</button>
-                  <button onClick={() => setSubscribeView("plans")} style={{ flex: 1, padding: "8px 0", borderRadius: 8, border: "none", background: subscribeView === "plans" ? "#fff" : "transparent", color: subscribeView === "plans" ? "#111827" : "#6b7280", fontWeight: 700, fontSize: 13, cursor: "pointer", boxShadow: subscribeView === "plans" ? "0 2px 4px rgba(0,0,0,0.05)" : "none", transition: "all 0.2s" }}>Settings Manage Plans</button>
+                  <button onClick={() => setSubscribeView("calendar")} style={{ flex: 1, padding: "8px 0", borderRadius: 8, border: "none", background: subscribeView === "calendar" ? "#fff" : "transparent", color: subscribeView === "calendar" ? "#111827" : "#6b7280", fontWeight: 700, fontSize: 13, cursor: "pointer", boxShadow: subscribeView === "calendar" ? "0 2px 4px rgba(0,0,0,0.05)" : "none", transition: "all 0.2s" }}>Calendar</button>
+                  <button onClick={() => setSubscribeView("plans")} style={{ flex: 1, padding: "8px 0", borderRadius: 8, border: "none", background: subscribeView === "plans" ? "#fff" : "transparent", color: subscribeView === "plans" ? "#111827" : "#6b7280", fontWeight: 700, fontSize: 13, cursor: "pointer", boxShadow: subscribeView === "plans" ? "0 2px 4px rgba(0,0,0,0.05)" : "none", transition: "all 0.2s" }}>Manage Plans</button>
                 </div>
               </div>
               <div>
@@ -828,17 +704,24 @@ export default function CustomerHome() {
           {activeTab === "profile" && (
             <div style={{ padding: 16, display: "flex", flexDirection: "column", gap: 16 }}>
               <ProfileTab user={user} handleUpdateProfile={handleUpdateProfile} handleLogout={handleLogout} />
-              <AddressesTab loadingAddresses={loadingAddresses} errorAddresses={errorAddresses} addresses={addresses} newAddrLabel={newAddrLabel} newAddrLine1={newAddrLine1} newAddrArea={newAddrArea} newAddrCity={newAddrCity} newAddrPincode={newAddrPincode} newAddrPhone={newAddrPhone} newAddrMapUrl={newAddrMapUrl} newAddrIsDefault={newAddrIsDefault} setNewAddrLabel={setNewAddrLabel} setNewAddrLine1={setNewAddrLine1} setNewAddrArea={setNewAddrArea} setNewAddrCity={setNewAddrCity} setNewAddrPincode={setNewAddrPincode} setNewAddrPhone={setNewAddrPhone} setNewAddrMapUrl={setNewAddrMapUrl} setNewAddrIsDefault={setNewAddrIsDefault} handleAddAddress={handleAddAddress} handleSetDefaultAddress={handleSetDefaultAddress} savingAddress={savingAddress} />
+              <AddressesTab 
+  user={user} 
+  addresses={addresses} 
+  loadingAddresses={loadingAddresses} 
+  errorAddresses={errorAddresses} 
+  handleSetDefaultAddress={handleSetDefaultAddress} 
+  reloadAddresses={reloadAddresses} 
+/>
             </div>
           )}
         </div>
 
         {/* STICKY BOTTOM NAVIGATION */}
         <div style={{ background: "#fff", display: "flex", justifyContent: "space-around", alignItems: "center", padding: "12px 0", paddingBottom: "calc(12px + env(safe-area-inset-bottom))", position: "fixed", bottom: 0, width: "100%", maxWidth: 480, borderTop: "1px solid #e5e7eb", zIndex: 10 }}>
-          <NavItem icon="Store" label="Shop" isActive={activeTab === "products" || activeTab === "dashboard" || activeTab === "cart"} onClick={() => setActiveTab("products")} />
-          <NavItem icon="Date" label="Subscribe" isActive={activeTab === "subscriptions"} onClick={() => setActiveTab("subscriptions")} />
-          <NavItem icon="$" label="Wallet" isActive={activeTab === "wallet"} onClick={() => setActiveTab("wallet")} />
-          <NavItem icon="User" label="Profile" isActive={activeTab === "profile"} onClick={() => setActiveTab("profile")} />
+          <NavItem label="Shop" isActive={activeTab === "products" || activeTab === "dashboard" || activeTab === "cart"} onClick={() => setActiveTab("products")} />
+          <NavItem label="Subscribe" isActive={activeTab === "subscriptions"} onClick={() => setActiveTab("subscriptions")} />
+          <NavItem label="Wallet" isActive={activeTab === "wallet"} onClick={() => setActiveTab("wallet")} />
+          <NavItem label="Profile" isActive={activeTab === "profile"} onClick={() => setActiveTab("profile")} />
         </div>
 
       </div>
@@ -847,11 +730,11 @@ export default function CustomerHome() {
 }
 
 // Module Helper Component for Bottom Nav
-function NavItem({ icon, label, isActive, onClick }: { icon: string, label: string, isActive: boolean, onClick: () => void }) {
+function NavItem({ label, isActive, onClick }: { label: string, isActive: boolean, onClick: () => void }) {
   return (
-    <div onClick={onClick} style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 4, cursor: "pointer", width: "25%", transition: "all 0.2s" }}>
-      <div style={{ fontSize: 24, transform: isActive ? "scale(1.1)" : "scale(1)", opacity: isActive ? 1 : 0.5 }}>{icon}</div>
-      <div style={{ fontSize: 10, fontWeight: 700, color: isActive ? "#2563eb" : "#6b7280" }}>{label}</div>
+    <div onClick={onClick} style={{ display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 6, cursor: "pointer", width: "25%", minHeight: 52, transition: "all 0.2s" }}>
+      <div style={{ width: 24, height: 3, borderRadius: 999, background: isActive ? "#2563eb" : "transparent" }} />
+      <div style={{ fontSize: 12, fontWeight: 800, color: isActive ? "#2563eb" : "#6b7280" }}>{label}</div>
     </div>
   );
 }

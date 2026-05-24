@@ -1,4 +1,6 @@
 import { useState } from "react";
+import { useCart } from "../../context/CartContext"; // Add this line!
+
 
 interface ProductsTabProps {
   products: any[];
@@ -6,14 +8,13 @@ interface ProductsTabProps {
   banners: any[];
   loadingProducts: boolean;
   errorProducts: string;
-  cart: Record<string, number>;
-  updateCartQty: (product: any, delta: number) => void;
   startSubscription: (product: any) => void;
 }
 
 export default function ProductsTab({
-  products, categories, banners, loadingProducts, errorProducts, cart, updateCartQty, startSubscription
+  products, categories, banners, loadingProducts, errorProducts, startSubscription
 }: ProductsTabProps) {
+  const { cart, updateCartQty } = useCart(); // Grab them from the cloud!
   const [selectedCategory, setSelectedCategory] = useState<string>("all");
 
   if (loadingProducts) return <div style={{ padding: 40, textAlign: "center", color: "#6b7280", fontWeight: 600 }}>Loading fresh products...</div>;
@@ -29,7 +30,9 @@ export default function ProductsTab({
           {product.imageUrl ? (
             <img src={product.imageUrl} alt={product.name} style={{ width: "100%", height: "100%", objectFit: "contain", mixBlendMode: "darken" }} />
           ) : (
-            <div style={{ fontSize: 40, opacity: 0.1 }}>Package</div>
+            <div aria-label="No product image" style={{ width: 56, height: 56, borderRadius: 14, border: "1px solid #e5e7eb", background: "#fff", display: "flex", alignItems: "center", justifyContent: "center", boxShadow: "inset 0 0 0 8px #f8fafc" }}>
+              <div style={{ width: 24, height: 18, border: "2px solid #d1d5db", borderRadius: 4, borderTopColor: "#9ca3af" }} />
+            </div>
           )}
         </div>
 
@@ -60,7 +63,7 @@ export default function ProductsTab({
           {/* Subscription Action */}
           {product.isSubscribable !== false && (
             <button onClick={() => startSubscription(product)} style={{ marginTop: 8, width: "100%", background: "#fff", border: "1px solid #e5e7eb", color: "#374151", padding: "8px", borderRadius: 8, fontSize: 11, fontWeight: 700, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", gap: 6 }}>
-              <span>Date</span> Subscribe
+              Subscribe
             </button>
           )}
         </div>
@@ -142,7 +145,7 @@ export default function ProductsTab({
             {/* Empty Category Fallback */}
             {products.filter(p => p.categoryId === selectedCategory).length === 0 && (
               <div style={{ gridColumn: "1 / span 2", padding: 40, textAlign: "center", color: "#6b7280" }}>
-                <div style={{ fontSize: 40, marginBottom: 12 }}>Cart</div>
+                <div style={{ fontSize: 13, marginBottom: 12, color: "#9ca3af", fontWeight: 700 }}>No products</div>
                 <div style={{ fontWeight: 600, fontSize: 16 }}>No items in this category yet</div>
               </div>
             )}

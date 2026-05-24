@@ -1,23 +1,22 @@
 import { useState, useEffect } from "react";
+import { useCart } from "../../context/CartContext"; // Add this line!
 
 interface CartTabProps {
-  cart: Record<string, number>;
   products: any[];
-  updateCartQty: (product: any, delta: number) => void;
   addresses: any[];
   checkoutShift: string;
   setCheckoutShift: (shift: "Morning" | "Evening") => void;
   handleCheckout: (addressId?: string) => void;
   isCheckingOut: boolean;
   setActiveTab: (tab: string) => void;
-  cartTotal: number;
 }
 
 export default function CartTab({
-  cart, products, updateCartQty, addresses, checkoutShift, setCheckoutShift,
-  handleCheckout, isCheckingOut, setActiveTab, cartTotal
+  products, addresses, checkoutShift, setCheckoutShift,
+  handleCheckout, isCheckingOut, setActiveTab
 }: CartTabProps) {
   
+  const { cart, updateCartQty } = useCart(); // Grab from the cloud!
   const [selectedAddressId, setSelectedAddressId] = useState("");
 
   // Auto-select their default address
@@ -33,6 +32,9 @@ export default function CartTab({
     const p = products.find((x: any) => x.id === id);
     return { id, qty, ...p };
   }).filter(item => item.name); // only keep valid products
+
+  // NEW: Calculate the cartTotal right here so we don't need it as a prop!
+  const cartTotal = cartItems.reduce((sum, item) => sum + ((item.price || 0) * item.qty), 0);
 
   if (cartItems.length === 0) {
     return (
