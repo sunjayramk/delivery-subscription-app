@@ -206,6 +206,7 @@ export const generateDailyOrders = onSchedule(
                 status: "pending",
                 source: "subscription",
                 shift: shift,
+                date: dateStr,
                 orderDate: dateStr, 
                 items: [],
                 createdAt: admin.firestore.FieldValue.serverTimestamp(),

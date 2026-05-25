@@ -18,6 +18,7 @@ export default function SubscriptionModal({ product, user, addresses, onClose, o
   const [customDays, setCustomDays] = useState<number[]>([]);
   const [dayQuantities, setDayQuantities] = useState<Record<number, string>>({});
   const [addressId, setAddressId] = useState<string>("");
+  const [shift, setShift] = useState<"Morning" | "Evening">("Morning");
   const [startDate, setStartDate] = useState<string>("");
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
@@ -57,8 +58,9 @@ export default function SubscriptionModal({ product, user, addresses, onClose, o
     try {
       const startDateValue = startDate ? new Date(startDate) : new Date();
       const baseData: any = {
-        tenantId: user.tenantId, customerId: user.uid, productId: product.id, productName: product.name, unit: product.unit,
+        tenantId: user.tenantId, customerId: user.uid, customerName: user.name || "Customer", productId: product.id, productName: product.name, unit: product.unit,
         price: product.price, qty: qtyNumber, scheduleType: schedule, isActive: true, createdAt: serverTimestamp(), startDate: startDateValue, 
+        shift,
         deliveryAddress: { label: selectedAddress.label, line1: selectedAddress.line1, area: selectedAddress.area || "", city: selectedAddress.city || "", pincode: selectedAddress.pincode || "", phone: selectedAddress.phone || "", mapUrl: selectedAddress.mapUrl || "" },
       };
       if (schedule === "custom") { baseData.scheduleDays = customDays; }
@@ -124,6 +126,14 @@ export default function SubscriptionModal({ product, user, addresses, onClose, o
               </div>
             </div>
           )}
+
+          <div>
+            <label style={{ fontSize: 12, fontWeight: 600, color: "#4b5563", display: "block", marginBottom: 6 }}>Delivery shift</label>
+            <div style={{ display: "flex", background: "#f3f4f6", borderRadius: 8, padding: 4 }}>
+              <button type="button" onClick={() => setShift("Morning")} style={{ flex: 1, padding: "10px 0", borderRadius: 6, border: "none", background: shift === "Morning" ? "#fff" : "transparent", color: shift === "Morning" ? "#2563eb" : "#6b7280", fontWeight: 700, fontSize: 14, cursor: "pointer", boxShadow: shift === "Morning" ? "0 2px 4px rgba(0,0,0,0.05)" : "none" }}>Morning</button>
+              <button type="button" onClick={() => setShift("Evening")} style={{ flex: 1, padding: "10px 0", borderRadius: 6, border: "none", background: shift === "Evening" ? "#fff" : "transparent", color: shift === "Evening" ? "#2563eb" : "#6b7280", fontWeight: 700, fontSize: 14, cursor: "pointer", boxShadow: shift === "Evening" ? "0 2px 4px rgba(0,0,0,0.05)" : "none" }}>Evening</button>
+            </div>
+          </div>
 
           <div>
             <label style={{ fontSize: 12, fontWeight: 600, color: "#4b5563", display: "block", marginBottom: 6 }}>Delivery address</label>

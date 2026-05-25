@@ -29,13 +29,28 @@ function generateDates() {
   return dates;
 }
 
+function shiftOrder(shift?: string) {
+  if (shift === "Morning") return 1;
+  if (shift === "Evening") return 2;
+  return 3;
+}
+
+const CANCELLATION_REASONS = [
+  "Customer not available",
+  "Door locked",
+  "Customer requested cancellation",
+  "Address issue",
+  "Payment issue",
+  "Product unavailable",
+  "Other",
+];
+
 export default function AgentDashboard() {
   const { user } = useAuth();
   const [activeTab, setActiveTab] = useState<"route" | "summary" | "profile">("route");
+  const [routeView, setRouteView] = useState<"pending" | "completed" | "all">("pending");
   const [loading, setLoading] = useState(true);
   const [toastMessage, setToastMessage] = useState("");
-
-  const [debugInfo, setDebugInfo] = useState({ customers: 0, totalOrdersFound: 0 });
 
   // --- SETTINGS & PERMISSIONS ---
   const [agentSettings, setAgentSettings] = useState({
@@ -45,7 +60,7 @@ export default function AgentDashboard() {
   // --- ROUTING & DATES ---
   const [allOrders, setAllOrders] = useState<any[]>([]);
   const availableDates = useMemo(() => generateDates(), []);
-  
+  const [debugInfo, setDebugInfo] = useState({ customers: 0, totalOrdersFound: 0 });
   const todayStr = getLocalDateString(new Date());
   const [selectedDateStr, setSelectedDateStr] = useState<string>(todayStr);
   const [selectedShift, setSelectedShift] = useState<"All" | "Morning" | "Evening">("All");
@@ -54,6 +69,9 @@ export default function AgentDashboard() {
   const [podFiles, setPodFiles] = useState<Record<string, File>>({});
   const [updatingId, setUpdatingId] = useState<string | null>(null);
   const [editedQuantities, setEditedQuantities] = useState<Record<string, Record<number, number>>>({}); 
+  const [showOverdue, setShowOverdue] = useState(false);
+  const [cancelOrder, setCancelOrder] = useState<any | null>(null);
+  const [cancelReason, setCancelReason] = useState(CANCELLATION_REASONS[0]);
   const isPastDate = selectedDateStr < todayStr;
 
   useEffect(() => {
@@ -61,6 +79,7 @@ export default function AgentDashboard() {
       if (!user?.tenantId) return;
       setLoading(true);
       try {
+        // 1. Fetch Global Settings
         const settingsSnap = await getDoc(doc(db, "tenants", user.tenantId, "settings", "global"));
         if (settingsSnap.exists()) {
           const d = settingsSnap.data();
@@ -70,62 +89,93 @@ export default function AgentDashboard() {
           });
         }
 
-        const assignSnap = await getDocs(collection(db, "tenants", user.tenantId, "customerAssignments"));
+        // FIX 1: Only fetch THIS agent's assigned customers, not the whole store
+        const assignQ = query(
+          collection(db, "tenants", user.tenantId, "customerAssignments"),
+          where("agentId", "==", user.uid)
+        );
+        const assignSnap = await getDocs(assignQ);
+        
         const myCustomerIds = new Set<string>();
         const routeMap: Record<string, string> = {};
         
         assignSnap.forEach((d) => {
           const data = d.data() as any;
-          if (data.agentId === user.uid && data.customerId) {
+          if (data.customerId) {
             myCustomerIds.add(data.customerId);
             routeMap[data.customerId] = data.routeName || "Unassigned";
           }
         });
 
+        // If this agent has no assigned customers, stop here and save database reads!
+        if (myCustomerIds.size === 0) {
+          setAllOrders([]);
+          setDebugInfo({ customers: 0, totalOrdersFound: 0 });
+          setLoading(false);
+          return;
+        }
+
+        // FIX 2: Only fetch orders for the 5 dates shown in the UI slider.
+        // (This prevents the app from downloading years of historical data)
         const qOrders = query(
           collection(db, "tenants", user.tenantId, "orders"), 
-          where("status", "in", ["pending", "delivered", "not_delivered"])
+          where("orderDate", "in", availableDates) // 'orderDate' is what our automated script saves!
         );
         const ordersSnap = await getDocs(qOrders);
         const rawList: any[] = [];
         
-        ordersSnap.forEach((docSnap) => {
-          const data = docSnap.data() as any;
-          if (!myCustomerIds.has(data.customerId)) return;
+        // FIX 3: Cache user names so we don't fetch the same customer's name multiple times
+        const userCache: Record<string, string> = {};
 
-          let orderDateStr = data.date;
+        for (const docSnap of ordersSnap.docs) {
+          const data = docSnap.data() as any;
+          
+          // Only process orders belonging to THIS agent's customers
+          if (!myCustomerIds.has(data.customerId)) continue;
+          // Filter out cancelled orders in memory
+          if (["pending", "delivered", "not_delivered"].indexOf(data.status) === -1) continue;
+
+          let orderDateStr = data.orderDate || data.date;
           if (!orderDateStr && data.createdAt) {
              orderDateStr = getLocalDateString(data.createdAt.toDate());
           }
           if (!orderDateStr) orderDateStr = todayStr;
 
-          // ROLLOVER LOGIC
+          // ROLLOVER LOGIC: Move missed pending orders to today
           if (data.status === "pending" && orderDateStr < todayStr) {
              orderDateStr = todayStr;
+          }
+
+          // Fetch missing names safely and cache them
+          let finalName = data.customerName;
+          if (!finalName) {
+            if (!userCache[data.customerId]) {
+               const uSnap = await getDoc(doc(db, "users", data.customerId));
+               userCache[data.customerId] = uSnap.exists() ? uSnap.data().name : "Unknown";
+            }
+            finalName = userCache[data.customerId];
           }
 
           rawList.push({ 
             id: docSnap.id, 
             ...data, 
+            customerName: finalName,
             routeName: routeMap[data.customerId],
             computedDate: orderDateStr
           });
-        });
-
-        for (const o of rawList) {
-          if (!o.customerName) {
-            const uSnap = await getDoc(doc(db, "users", o.customerId));
-            if (uSnap.exists()) o.customerName = uSnap.data().name;
-          }
         }
 
         setDebugInfo({ customers: myCustomerIds.size, totalOrdersFound: rawList.length });
         setAllOrders(rawList);
         setEditedQuantities({}); 
-      } catch (err) { console.error(err); } finally { setLoading(false); }
+      } catch (err) { 
+        console.error("Agent Load Error:", err); 
+      } finally { 
+        setLoading(false); 
+      }
     }
     loadAgentData();
-  }, [user]);
+  }, [user, availableDates, todayStr]);
 
   // --- FILTERING ---
   const ordersForSelectedDate = allOrders.filter(o => o.computedDate === selectedDateStr);
@@ -135,18 +185,40 @@ export default function AgentDashboard() {
     (selectedShift === "All" || o.shift === selectedShift) &&
     (selectedRoute === "All" || o.routeName === selectedRoute)
   );
+
+  const overdueOrders = useMemo(() => {
+    return allOrders
+      .filter(o =>
+        o.status === "pending" &&
+        o.computedDate < todayStr &&
+        (selectedShift === "All" || o.shift === selectedShift) &&
+        (selectedRoute === "All" || o.routeName === selectedRoute)
+      )
+      .sort((a, b) => {
+        const dateCompare = String(a.computedDate || "").localeCompare(String(b.computedDate || ""));
+        if (dateCompare !== 0) return dateCompare;
+        const shiftCompare = shiftOrder(a.shift) - shiftOrder(b.shift);
+        if (shiftCompare !== 0) return shiftCompare;
+        return String(a.customerName || "").localeCompare(String(b.customerName || ""));
+      });
+  }, [allOrders, selectedShift, selectedRoute, todayStr]);
   
   const pendingOrders = filteredOrders.filter(o => o.status === "pending");
   const completedOrders = filteredOrders.filter(o => o.status === "delivered" || o.status === "not_delivered");
+  const routeViewOrders = useMemo(() => {
+    if (routeView === "pending") return pendingOrders;
+    if (routeView === "completed") return completedOrders;
+    return filteredOrders;
+  }, [routeView, pendingOrders, completedOrders, filteredOrders]);
 
   // NEW: Sort orders so pending are at the top, completed at the bottom
   const sortedRouteOrders = useMemo(() => {
-    return [...filteredOrders].sort((a, b) => {
+    return [...routeViewOrders].sort((a, b) => {
       if (a.status === "pending" && b.status !== "pending") return -1;
       if (a.status !== "pending" && b.status === "pending") return 1;
       return 0;
     });
-  }, [filteredOrders]);
+  }, [routeViewOrders]);
 
   // --- ACTIONS ---
   const handleQtyChange = (orderId: string, itemIdx: number, delta: number, currentQty: number) => {
@@ -158,7 +230,7 @@ export default function AgentDashboard() {
     });
   };
 
-  async function updateOrderStatus(order: any, status: "delivered" | "not_delivered") {
+  async function updateOrderStatus(order: any, status: "delivered" | "not_delivered", cancellationReason?: string) {
     if (!user) return;
     setUpdatingId(order.id);
     try {
@@ -198,12 +270,13 @@ export default function AgentDashboard() {
 
         await updateDoc(refDoc, updateData);
       } else {
-        await updateDoc(refDoc, { status, updatedAt: serverTimestamp() });
+        await updateDoc(refDoc, { status, cancellationReason: cancellationReason || "Cancelled by agent", updatedAt: serverTimestamp() });
       }
 
       setPodFiles(prev => { const copy = { ...prev }; delete copy[order.id]; return copy; });
-      setAllOrders(prev => prev.map(o => o.id === order.id ? { ...o, status, items: finalItems, podUrl: finalPodUrl || order.podUrl } : o));
-      setToastMessage(status === "delivered" ? "Delivered!" : "Marked as Skipped.");
+      setAllOrders(prev => prev.map(o => o.id === order.id ? { ...o, status, items: finalItems, podUrl: finalPodUrl || order.podUrl, cancellationReason } : o));
+      setCancelOrder(null);
+      setToastMessage(status === "delivered" ? "Delivered!" : "Cancelled.");
     } catch (err: any) { 
       // FIX: Log the actual error to the console so we can debug it!
       console.error("UPDATE ORDER ERROR:", err);
@@ -231,8 +304,10 @@ export default function AgentDashboard() {
             <div style={{ textAlign: "right" }}>
               <div style={{ fontSize: 24, fontWeight: 800 }}>{pendingOrders.length}</div>
               <div style={{ fontSize: 11, color: "#9ca3af", fontWeight: 600 }}>of {filteredOrders.length} Stops Left</div>
-              {/* DIAGNOSTIC CHECK */}
-              <div style={{ fontSize: 10, color: "#4b5563", marginTop: 4 }}>Dbg: {debugInfo.customers}C / {debugInfo.totalOrdersFound}O</div>
+              <div style={{ fontSize: 11, color: "#9ca3af", marginTop: 4 }}>Assigned {debugInfo.customers} customers · {debugInfo.totalOrdersFound} orders</div>
+              {selectedDateStr === todayStr && overdueOrders.length > 0 && (
+                <div style={{ fontSize: 11, color: "#fca5a5", fontWeight: 700, marginTop: 4 }}>{overdueOrders.length} overdue</div>
+              )}
             </div>
           </div>
 
@@ -267,7 +342,7 @@ export default function AgentDashboard() {
               {/* FILTERS */}
               <div style={{ display: "flex", gap: 8 }}>
                 <select value={selectedShift} onChange={e => setSelectedShift(e.target.value as any)} style={{ flex: 1, padding: "10px", borderRadius: 10, border: "1px solid #d1d5db", fontSize: 13, fontWeight: 600, background: "#fff" }}>
-                  <option value="All">All Shifts</option><option value="Morning">Morning Morning</option><option value="Evening">Evening Evening</option>
+                  <option value="All">All Shifts</option><option value="Morning">Morning</option><option value="Evening">Evening</option>
                 </select>
                 {uniqueRoutes.length > 1 && (
                   <select value={selectedRoute} onChange={e => setSelectedRoute(e.target.value)} style={{ flex: 1, padding: "10px", borderRadius: 10, border: "1px solid #d1d5db", fontSize: 13, fontWeight: 600, background: "#fff" }}>
@@ -277,10 +352,52 @@ export default function AgentDashboard() {
                 )}
               </div>
 
+              <div style={{ display: "flex", gap: 8, background: "#eef2f7", padding: 4, borderRadius: 12 }}>
+                {[
+                  { key: "pending", label: `Pending (${pendingOrders.length})` },
+                  { key: "completed", label: `Completed (${completedOrders.length})` },
+                  { key: "all", label: `All (${filteredOrders.length})` },
+                ].map((item) => {
+                  const isActive = routeView === item.key;
+                  return (
+                    <button
+                      key={item.key}
+                      onClick={() => setRouteView(item.key as "pending" | "completed" | "all")}
+                      style={{
+                        flex: 1,
+                        padding: "9px 6px",
+                        borderRadius: 9,
+                        border: "none",
+                        background: isActive ? "#fff" : "transparent",
+                        color: isActive ? "#111827" : "#6b7280",
+                        fontSize: 12,
+                        fontWeight: 800,
+                        cursor: "pointer",
+                        boxShadow: isActive ? "0 1px 3px rgba(15,23,42,0.08)" : "none",
+                      }}
+                    >
+                      {item.label}
+                    </button>
+                  );
+                })}
+              </div>
+
+              {selectedDateStr === todayStr && overdueOrders.length > 0 && (
+                <button
+                  onClick={() => setShowOverdue(true)}
+                  style={{ width: "100%", background: "#fff7ed", border: "1px solid #fed7aa", borderRadius: 12, padding: "10px 12px", color: "#9a3412", fontSize: 13, fontWeight: 800, textAlign: "left", cursor: "pointer", display: "flex", justifyContent: "space-between", alignItems: "center" }}
+                >
+                  <span>{overdueOrders.length} overdue pending {overdueOrders.length === 1 ? "stop" : "stops"}</span>
+                  <span style={{ color: "#ea580c" }}>View</span>
+                </button>
+              )}
+
               {sortedRouteOrders.length === 0 ? (
                 <div style={{ textAlign: "center", padding: 40, color: "#6b7280" }}>
                   <div style={{ fontSize: 40, marginBottom: 12 }}>Finish</div>
-                  <div style={{ fontSize: 16, fontWeight: 700, color: "#111827" }}>Queue Empty</div>
+                  <div style={{ fontSize: 16, fontWeight: 700, color: "#111827" }}>
+                    {routeView === "pending" ? "No pending stops" : routeView === "completed" ? "No completed stops yet" : "No stops found"}
+                  </div>
                 </div>
               ) : (
                 sortedRouteOrders.map((order, idx) => {
@@ -295,12 +412,12 @@ export default function AgentDashboard() {
                             <span style={{ background: isCompleted ? "#9ca3af" : "#111827", color: "#fff", width: 24, height: 24, borderRadius: "50%", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 12, fontWeight: 800 }}>{idx + 1}</span>
                             <span style={{ fontSize: 16, fontWeight: 800, color: "#111827", textDecoration: isCompleted ? "line-through" : "none" }}>{order.customerName || "Customer"}</span>
                           </div>
-                          <div style={{ fontSize: 13, color: "#4b5563", paddingLeft: 32 }}>Location {formatAddress(order.deliveryAddress)}</div>
+                          <div style={{ fontSize: 13, color: "#4b5563", paddingLeft: 32, lineHeight: 1.45 }}>{formatAddress(order.deliveryAddress)}</div>
                         </div>
                         
                         {/* Permission: Calling */}
                         {agentSettings.allowRiderCalling && order.deliveryAddress?.phone && !isCompleted && !isPastDate && (
-                          <button onClick={() => window.open(`tel:${order.deliveryAddress?.phone}`)} style={{ background: "#eff6ff", color: "#2563eb", border: "none", width: 36, height: 36, borderRadius: "50%", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 16, cursor: "pointer" }}>Phone</button>
+                          <button onClick={() => window.open(`tel:${order.deliveryAddress?.phone}`)} style={{ background: "#eff6ff", color: "#2563eb", border: "1px solid #bfdbfe", minWidth: 54, height: 34, borderRadius: 17, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 13, fontWeight: 800, cursor: "pointer" }}>Call</button>
                         )}
                       </div>
 
@@ -336,12 +453,12 @@ export default function AgentDashboard() {
                           <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
                             <input type="file" accept="image/*" capture="environment" id={`pod-${order.id}`} style={{ display: "none" }} onChange={(e) => { if (e.target.files?.[0]) setPodFiles(prev => ({ ...prev, [order.id]: e.target.files![0] })); }} />
                             <label htmlFor={`pod-${order.id}`} style={{ flex: 1, textAlign: "center", padding: "8px 0", borderRadius: 8, fontSize: 12, fontWeight: 700, cursor: "pointer", background: podFiles[order.id] ? "#dcfce7" : "#f1f5f9", color: podFiles[order.id] ? "#16a34a" : "#475569", border: `1px solid ${podFiles[order.id] ? "#bbf7d0" : "#e2e8f0"}` }}>
-                              {podFiles[order.id] ? "Photo Photo Ready!" : "Photo Snap Door Photo"}
+                              {podFiles[order.id] ? "Photo ready" : "Add door photo"}
                             </label>
                           </div>
                           <div style={{ display: "flex", gap: 8 }}>
                             {agentSettings.agentCanMarkNonDelivery && (
-                              <button disabled={updatingId === order.id} onClick={() => void updateOrderStatus(order, "not_delivered")} style={{ flex: 1, padding: "12px 0", borderRadius: 12, border: "1px solid #d1d5db", background: "#fff", color: "#dc2626", fontWeight: 700, fontSize: 14 }}>Skip</button>
+                              <button disabled={updatingId === order.id} onClick={() => { setCancelOrder(order); setCancelReason(CANCELLATION_REASONS[0]); }} style={{ flex: 1, padding: "12px 0", borderRadius: 12, border: "1px solid #fecaca", background: "#fff", color: "#dc2626", fontWeight: 700, fontSize: 14 }}>Cancel</button>
                             )}
                             <button disabled={updatingId === order.id} onClick={() => void updateOrderStatus(order, "delivered")} style={{ flex: 2, padding: "12px 0", borderRadius: 12, border: "none", background: "#16a34a", color: "#fff", fontWeight: 800, fontSize: 15, boxShadow: "0 4px 10px rgba(22,163,74,0.3)" }}>
                               {updatingId === order.id ? "Saving..." : "OK Delivered"}
@@ -353,7 +470,7 @@ export default function AgentDashboard() {
                       {/* Read-Only Status Tag for Completed Orders */}
                       {isCompleted && (
                         <div style={{ padding: 12, background: order.status === "delivered" ? "#dcfce7" : "#fee2e2", textAlign: "center", fontSize: 13, fontWeight: 700, color: order.status === "delivered" ? "#166534" : "#991b1b" }}>
-                          {order.status === "delivered" ? "Successfully Delivered" : "Skipped"}
+                          {order.status === "delivered" ? "Successfully Delivered" : `Cancelled${order.cancellationReason ? `: ${order.cancellationReason}` : ""}`}
                         </div>
                       )}
 
@@ -372,9 +489,9 @@ export default function AgentDashboard() {
                   <div key={o.id} style={{ background: o.status === "delivered" ? "#f0fdf4" : "#fef2f2", border: `1px solid ${o.status === "delivered" ? "#bbf7d0" : "#fecaca"}`, padding: 12, borderRadius: 12, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
                     <div>
                       <div style={{ fontWeight: 600, color: o.status === "delivered" ? "#166534" : "#991b1b", fontSize: 14 }}>{o.customerName}</div>
-                      {o.podUrl && <a href={o.podUrl} target="_blank" rel="noreferrer" style={{ fontSize: 11, color: "#2563eb", marginTop: 4, display: "inline-block" }}>Image View Photo</a>}
+                      {o.podUrl && <a href={o.podUrl} target="_blank" rel="noreferrer" style={{ fontSize: 11, color: "#2563eb", marginTop: 4, display: "inline-block" }}>View photo</a>}
                     </div>
-                    <div style={{ fontSize: 12, color: o.status === "delivered" ? "#15803d" : "#dc2626", fontWeight: 700 }}>{o.status === "delivered" ? "OK Done" : "Skipped"}</div>
+                    <div style={{ fontSize: 12, color: o.status === "delivered" ? "#15803d" : "#dc2626", fontWeight: 700 }}>{o.status === "delivered" ? "OK Done" : "Cancelled"}</div>
                   </div>
                 ))}
             </div>
@@ -386,11 +503,92 @@ export default function AgentDashboard() {
 
         </div>
 
+        {showOverdue && (
+          <div style={{ position: "absolute", inset: 0, zIndex: 80, display: "flex", alignItems: "flex-end" }}>
+            <div onClick={() => setShowOverdue(false)} style={{ position: "absolute", inset: 0, background: "rgba(17,24,39,0.4)" }} />
+            <div style={{ position: "relative", width: "100%", maxHeight: "72%", background: "#fff", borderRadius: "20px 20px 0 0", padding: 16, overflowY: "auto", boxShadow: "0 -10px 30px rgba(0,0,0,0.16)" }}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 14 }}>
+                <div>
+                  <div style={{ fontSize: 18, fontWeight: 800, color: "#111827" }}>Overdue Pending</div>
+                  <div style={{ fontSize: 12, color: "#9a3412", marginTop: 2 }}>{overdueOrders.length} older stops not counted in today's route</div>
+                </div>
+                <button onClick={() => setShowOverdue(false)} style={{ width: 32, height: 32, borderRadius: 16, border: "none", background: "#f3f4f6", color: "#4b5563", fontWeight: 800, cursor: "pointer" }}>x</button>
+              </div>
+              <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+                {overdueOrders.map((order) => (
+                  <div key={order.id} style={{ border: "1px solid #e5e7eb", borderRadius: 12, padding: 12, background: "#fff" }}>
+                    <div style={{ display: "flex", justifyContent: "space-between", gap: 12 }}>
+                      <div>
+                        <div style={{ color: "#111827", fontSize: 14, fontWeight: 800 }}>{order.customerName || "Customer"}</div>
+                        <div style={{ color: "#6b7280", fontSize: 12, marginTop: 4 }}>{order.computedDate} · {order.shift || "No shift"}</div>
+                      </div>
+                      <div style={{ color: "#9a3412", fontSize: 12, fontWeight: 800, whiteSpace: "nowrap" }}>{(order.items || []).length} items</div>
+                    </div>
+                    <div style={{ marginTop: 8, color: "#4b5563", fontSize: 12, lineHeight: 1.4 }}>{formatAddress(order.deliveryAddress)}</div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+        )}
+
+        {cancelOrder && (
+          <div style={{ position: "absolute", inset: 0, zIndex: 90, display: "flex", alignItems: "flex-end" }}>
+            <div onClick={() => updatingId ? null : setCancelOrder(null)} style={{ position: "absolute", inset: 0, background: "rgba(17,24,39,0.45)" }} />
+            <div style={{ position: "relative", width: "100%", background: "#fff", borderRadius: "20px 20px 0 0", padding: 18, boxShadow: "0 -10px 30px rgba(0,0,0,0.16)" }}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 12, marginBottom: 16 }}>
+                <div>
+                  <div style={{ fontSize: 18, fontWeight: 800, color: "#111827" }}>Cancel Delivery</div>
+                  <div style={{ fontSize: 13, color: "#6b7280", marginTop: 4 }}>{cancelOrder.customerName || "Customer"}</div>
+                </div>
+                <button disabled={!!updatingId} onClick={() => setCancelOrder(null)} style={{ width: 32, height: 32, borderRadius: 16, border: "none", background: "#f3f4f6", color: "#4b5563", fontWeight: 800, cursor: updatingId ? "not-allowed" : "pointer" }}>x</button>
+              </div>
+
+              <label style={{ display: "block", fontSize: 12, fontWeight: 700, color: "#4b5563", marginBottom: 6 }}>Reason</label>
+              <select value={cancelReason} onChange={(e) => setCancelReason(e.target.value)} style={{ width: "100%", padding: 12, borderRadius: 10, border: "1px solid #d1d5db", background: "#fff", fontSize: 14, fontWeight: 600, color: "#111827", marginBottom: 16 }}>
+                {CANCELLATION_REASONS.map((reason) => (
+                  <option key={reason} value={reason}>{reason}</option>
+                ))}
+              </select>
+
+              <div style={{ display: "flex", gap: 10 }}>
+                <button disabled={!!updatingId} onClick={() => setCancelOrder(null)} style={{ flex: 1, padding: "12px 0", borderRadius: 12, border: "1px solid #d1d5db", background: "#fff", color: "#4b5563", fontWeight: 800, fontSize: 14, cursor: updatingId ? "not-allowed" : "pointer" }}>Back</button>
+                <button disabled={!!updatingId} onClick={() => void updateOrderStatus(cancelOrder, "not_delivered", cancelReason)} style={{ flex: 2, padding: "12px 0", borderRadius: 12, border: "none", background: "#dc2626", color: "#fff", fontWeight: 800, fontSize: 14, cursor: updatingId ? "not-allowed" : "pointer", opacity: updatingId ? 0.75 : 1 }}>
+                  {updatingId ? "Saving..." : "Confirm Cancel"}
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
         {/* BOTTOM NAVIGATION */}
-        <div style={{ position: "absolute", bottom: 0, left: 0, right: 0, background: "#fff", borderTop: "1px solid #e5e7eb", display: "flex", padding: "8px 16px 20px 16px", justifyContent: "space-between", zIndex: 40 }}>
-          <button onClick={() => setActiveTab("route")} style={{ flex: 1, background: "none", border: "none", display: "flex", flexDirection: "column", alignItems: "center", gap: 4, color: activeTab === "route" ? "#2563eb" : "#9ca3af" }}><span style={{ fontSize: 20 }}>Location</span><span style={{ fontSize: 10, fontWeight: 700 }}>Route</span></button>
-          <button onClick={() => setActiveTab("summary")} style={{ flex: 1, background: "none", border: "none", display: "flex", flexDirection: "column", alignItems: "center", gap: 4, color: activeTab === "summary" ? "#2563eb" : "#9ca3af" }}><span style={{ fontSize: 20 }}>Stats</span><span style={{ fontSize: 10, fontWeight: 700 }}>Summary</span></button>
-          <button onClick={() => setActiveTab("profile")} style={{ flex: 1, background: "none", border: "none", display: "flex", flexDirection: "column", alignItems: "center", gap: 4, color: activeTab === "profile" ? "#2563eb" : "#9ca3af" }}><span style={{ fontSize: 20 }}>User</span><span style={{ fontSize: 10, fontWeight: 700 }}>Profile</span></button>
+        <div style={{ position: "absolute", bottom: 0, left: 0, right: 0, background: "#fff", borderTop: "1px solid #e5e7eb", display: "flex", gap: 8, padding: "10px 12px calc(10px + env(safe-area-inset-bottom))", zIndex: 40 }}>
+          {[
+            { key: "route", label: "Route" },
+            { key: "summary", label: "Summary" },
+            { key: "profile", label: "Profile" },
+          ].map((item) => {
+            const isActive = activeTab === item.key;
+            return (
+              <button
+                key={item.key}
+                onClick={() => setActiveTab(item.key as "route" | "summary" | "profile")}
+                style={{
+                  flex: 1,
+                  height: 46,
+                  border: "none",
+                  borderRadius: 12,
+                  background: isActive ? "#eff6ff" : "#fff",
+                  color: isActive ? "#2563eb" : "#6b7280",
+                  fontSize: 13,
+                  fontWeight: 800,
+                  cursor: "pointer",
+                }}
+              >
+                {item.label}
+              </button>
+            );
+          })}
         </div>
       </div>
     </div>

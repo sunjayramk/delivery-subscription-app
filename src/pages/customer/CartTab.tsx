@@ -78,10 +78,10 @@ export default function CartTab({
 
         {/* Time SHIFT SELECTION */}
         <div style={{ background: "#fff", borderRadius: 16, padding: 16, border: "1px solid #e5e7eb", boxShadow: "0 2px 4px rgba(0,0,0,0.02)" }}>
-           <h3 style={{ margin: "0 0 12px 0", fontSize: 15, fontWeight: 700, color: "#111827", display: "flex", alignItems: "center", gap: 8 }}>Time Select Shift</h3>
+           <h3 style={{ margin: "0 0 12px 0", fontSize: 15, fontWeight: 700, color: "#111827", display: "flex", alignItems: "center", gap: 8 }}>Delivery shift</h3>
            <div style={{ display: "flex", background: "#f3f4f6", borderRadius: 8, padding: 4 }}>
-              <button onClick={() => setCheckoutShift("Morning")} style={{ flex: 1, padding: "10px 0", borderRadius: 6, border: "none", background: checkoutShift === "Morning" ? "#fff" : "transparent", color: checkoutShift === "Morning" ? "#2563eb" : "#6b7280", fontWeight: 700, fontSize: 14, cursor: "pointer", boxShadow: checkoutShift === "Morning" ? "0 2px 4px rgba(0,0,0,0.05)" : "none", transition: "all 0.2s" }}>Morning Morning</button>
-              <button onClick={() => setCheckoutShift("Evening")} style={{ flex: 1, padding: "10px 0", borderRadius: 6, border: "none", background: checkoutShift === "Evening" ? "#fff" : "transparent", color: checkoutShift === "Evening" ? "#2563eb" : "#6b7280", fontWeight: 700, fontSize: 14, cursor: "pointer", boxShadow: checkoutShift === "Evening" ? "0 2px 4px rgba(0,0,0,0.05)" : "none", transition: "all 0.2s" }}>Evening Evening</button>
+              <button onClick={() => setCheckoutShift("Morning")} style={{ flex: 1, padding: "10px 0", borderRadius: 6, border: "none", background: checkoutShift === "Morning" ? "#fff" : "transparent", color: checkoutShift === "Morning" ? "#2563eb" : "#6b7280", fontWeight: 700, fontSize: 14, cursor: "pointer", boxShadow: checkoutShift === "Morning" ? "0 2px 4px rgba(0,0,0,0.05)" : "none", transition: "all 0.2s" }}>Morning</button>
+              <button onClick={() => setCheckoutShift("Evening")} style={{ flex: 1, padding: "10px 0", borderRadius: 6, border: "none", background: checkoutShift === "Evening" ? "#fff" : "transparent", color: checkoutShift === "Evening" ? "#2563eb" : "#6b7280", fontWeight: 700, fontSize: 14, cursor: "pointer", boxShadow: checkoutShift === "Evening" ? "0 2px 4px rgba(0,0,0,0.05)" : "none", transition: "all 0.2s" }}>Evening</button>
            </div>
         </div>
 

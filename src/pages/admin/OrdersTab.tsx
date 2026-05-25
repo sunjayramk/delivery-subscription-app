@@ -45,6 +45,11 @@ function getOrderTotal(items: OrderItem[]): number {
   return items.reduce((sum, it) => sum + (it.price ?? 0) * (it.qty ?? 1), 0);
 }
 
+function getStatusLabel(status: string) {
+  if (status === "not_delivered") return "cancelled";
+  return status;
+}
+
 export default function OrdersTab({
   cardStyle,
   orders,
@@ -188,8 +193,13 @@ export default function OrdersTab({
                         fontWeight: 500,
                       }}
                     >
-                      {o.status}
+                      {getStatusLabel(o.status)}
                     </span>
+                    {o.status === "not_delivered" && o.cancellationReason && (
+                      <span style={{ fontSize: 12, color: "#dc2626", fontWeight: 600 }}>
+                        {o.cancellationReason}
+                      </span>
+                    )}
                     <select
                       value={o.status}
                       disabled={updatingId === o.id}
@@ -204,7 +214,7 @@ export default function OrdersTab({
                     >
                       <option value="pending">Pending</option>
                       <option value="delivered">Delivered</option>
-                      <option value="not_delivered">Not Delivered</option>
+                      <option value="not_delivered">Cancelled</option>
                     </select>
                     {updatingId === o.id && (
                       <span style={{ fontSize: 12, color: "#666" }}>Saving...</span>

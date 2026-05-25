@@ -670,7 +670,7 @@ export default function AdminDashboard() {
 ))}
         </div>
 
-        {activeTab === "dashboard" && <DashboardTab />}
+        {activeTab === "dashboard" && <DashboardTab onOpenTab={(tab) => setActiveTab(tab as any)} />}
         {activeTab === "manifest" && <DailyManifest />}
         {activeTab === "customers" && <CustomersTab />}
         {activeTab === "team" && <TeamTab />}
