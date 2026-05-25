@@ -1,23 +1,27 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { useCart } from "../../context/CartContext"; // Add this line!
+import { buildDeliverySlots } from "../../services/deliverySlots";
+import type { DeliverySlot, DeliverySlotSubscription } from "../../services/deliverySlots";
 
 interface CartTabProps {
   products: any[];
   addresses: any[];
-  checkoutShift: string;
-  setCheckoutShift: (shift: "Morning" | "Evening") => void;
-  handleCheckout: (addressId?: string) => void;
+  subscriptions: DeliverySlotSubscription[];
+  loadingSubscriptions: boolean;
+  cutoffTime?: string;
+  handleCheckout: (addressId: string | undefined, slot: DeliverySlot) => void;
   isCheckingOut: boolean;
   setActiveTab: (tab: string) => void;
 }
 
 export default function CartTab({
-  products, addresses, checkoutShift, setCheckoutShift,
+  products, addresses, subscriptions, loadingSubscriptions, cutoffTime,
   handleCheckout, isCheckingOut, setActiveTab
 }: CartTabProps) {
   
   const { cart, updateCartQty } = useCart(); // Grab from the cloud!
   const [selectedAddressId, setSelectedAddressId] = useState("");
+  const [selectedSlotKey, setSelectedSlotKey] = useState("");
 
   // Auto-select their default address
   useEffect(() => {
@@ -26,6 +30,27 @@ export default function CartTab({
       setSelectedAddressId(defaultAddr.id);
     }
   }, [addresses, selectedAddressId]);
+
+  const deliverySlots = useMemo(() => buildDeliverySlots(subscriptions, {
+    windowDays: 30,
+    cutoffTime,
+    includeToday: false,
+    blockNearestDateAfterCutoff: true,
+  }), [subscriptions, cutoffTime]);
+
+  useEffect(() => {
+    if (deliverySlots.length === 0) {
+      setSelectedSlotKey("");
+      return;
+    }
+
+    const currentExists = deliverySlots.some((slot) => `${slot.date}_${slot.shift}` === selectedSlotKey);
+    if (!currentExists) {
+      setSelectedSlotKey(`${deliverySlots[0].date}_${deliverySlots[0].shift}`);
+    }
+  }, [deliverySlots, selectedSlotKey]);
+
+  const selectedSlot = deliverySlots.find((slot) => `${slot.date}_${slot.shift}` === selectedSlotKey);
 
   // Map the cart dictionary back into product objects
   const cartItems = Object.entries(cart).map(([id, qty]) => {
@@ -76,13 +101,25 @@ export default function CartTab({
            )}
         </div>
 
-        {/* Time SHIFT SELECTION */}
+        {/* Time DELIVERY SLOT SELECTION */}
         <div style={{ background: "#fff", borderRadius: 16, padding: 16, border: "1px solid #e5e7eb", boxShadow: "0 2px 4px rgba(0,0,0,0.02)" }}>
-           <h3 style={{ margin: "0 0 12px 0", fontSize: 15, fontWeight: 700, color: "#111827", display: "flex", alignItems: "center", gap: 8 }}>Delivery shift</h3>
-           <div style={{ display: "flex", background: "#f3f4f6", borderRadius: 8, padding: 4 }}>
-              <button onClick={() => setCheckoutShift("Morning")} style={{ flex: 1, padding: "10px 0", borderRadius: 6, border: "none", background: checkoutShift === "Morning" ? "#fff" : "transparent", color: checkoutShift === "Morning" ? "#2563eb" : "#6b7280", fontWeight: 700, fontSize: 14, cursor: "pointer", boxShadow: checkoutShift === "Morning" ? "0 2px 4px rgba(0,0,0,0.05)" : "none", transition: "all 0.2s" }}>Morning</button>
-              <button onClick={() => setCheckoutShift("Evening")} style={{ flex: 1, padding: "10px 0", borderRadius: 6, border: "none", background: checkoutShift === "Evening" ? "#fff" : "transparent", color: checkoutShift === "Evening" ? "#2563eb" : "#6b7280", fontWeight: 700, fontSize: 14, cursor: "pointer", boxShadow: checkoutShift === "Evening" ? "0 2px 4px rgba(0,0,0,0.05)" : "none", transition: "all 0.2s" }}>Evening</button>
-           </div>
+           <h3 style={{ margin: "0 0 12px 0", fontSize: 15, fontWeight: 700, color: "#111827", display: "flex", alignItems: "center", gap: 8 }}>Delivery slot</h3>
+           {loadingSubscriptions ? (
+             <div style={{ color: "#6b7280", fontSize: 13, fontWeight: 600, background: "#f9fafb", padding: 12, borderRadius: 8 }}>Loading delivery slots...</div>
+           ) : deliverySlots.length === 0 ? (
+             <div style={{ color: "#dc2626", fontSize: 13, fontWeight: 600, background: "#fef2f2", padding: 12, borderRadius: 8 }}>No eligible subscription delivery slots are available.</div>
+           ) : (
+             <select
+               value={selectedSlotKey}
+               onChange={(e) => setSelectedSlotKey(e.target.value)}
+               style={{ width: "100%", padding: 12, borderRadius: 8, border: "1px solid #d1d5db", background: "#f9fafb", fontSize: 14, fontWeight: 700, color: "#111827" }}
+             >
+               {deliverySlots.map((slot) => {
+                 const key = `${slot.date}_${slot.shift}`;
+                 return <option key={key} value={key}>{slot.label}</option>;
+               })}
+             </select>
+           )}
         </div>
 
         {/* Cart ITEMIZED CART */}
@@ -132,9 +169,9 @@ export default function CartTab({
       {/* Launch STICKY CHECKOUT BUTTON */}
       <div style={{ position: "fixed", bottom: 80, left: 0, right: 0, margin: "0 auto", maxWidth: 448, padding: "0 16px", zIndex: 50 }}>
         <button 
-          onClick={() => handleCheckout(selectedAddressId)}
-          disabled={isCheckingOut || addresses.length === 0}
-          style={{ width: "100%", background: "#16a34a", color: "#fff", borderRadius: 12, padding: "16px", border: "none", fontSize: 16, fontWeight: 800, display: "flex", justifyContent: "space-between", alignItems: "center", boxShadow: "0 4px 12px rgba(22, 163, 74, 0.3)", cursor: (isCheckingOut || addresses.length === 0) ? "not-allowed" : "pointer", opacity: (isCheckingOut || addresses.length === 0) ? 0.7 : 1 }}
+          onClick={() => selectedSlot && handleCheckout(selectedAddressId, selectedSlot)}
+          disabled={isCheckingOut || addresses.length === 0 || loadingSubscriptions || !selectedSlot}
+          style={{ width: "100%", background: "#16a34a", color: "#fff", borderRadius: 12, padding: "16px", border: "none", fontSize: 16, fontWeight: 800, display: "flex", justifyContent: "space-between", alignItems: "center", boxShadow: "0 4px 12px rgba(22, 163, 74, 0.3)", cursor: (isCheckingOut || addresses.length === 0 || loadingSubscriptions || !selectedSlot) ? "not-allowed" : "pointer", opacity: (isCheckingOut || addresses.length === 0 || loadingSubscriptions || !selectedSlot) ? 0.7 : 1 }}
         >
           <span>{isCheckingOut ? "Processing..." : "Place Order"}</span>
           <span>Rs.{cartTotal} {"->"}</span>

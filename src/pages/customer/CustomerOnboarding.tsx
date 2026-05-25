@@ -1,8 +1,9 @@
 import { useState } from "react";
 import { db } from "../../firebase";
-import { doc, setDoc, collection, addDoc, serverTimestamp } from "firebase/firestore";
+import { doc, setDoc, collection, addDoc, getDocs, serverTimestamp } from "firebase/firestore";
 import { useAuth } from "../../context/AuthContext";
 import { useLoadScript } from "@react-google-maps/api";
+import { buildAddressServiceFields } from "../../services/addressRoutes";
 
 const libraries: ("places")[] = ["places"];
 
@@ -116,8 +117,16 @@ export default function CustomerOnboarding({ onComplete }: { onComplete: () => v
         name: formData.name, role: "customer", tenantId: user.tenantId, isOnboarded: true, createdAt: serverTimestamp()
       }, { merge: true });
 
+      const [zoneSnap, hubSnap] = await Promise.all([
+        getDocs(collection(db, "tenants", user.tenantId, "zones")),
+        getDocs(collection(db, "tenants", user.tenantId, "hubs")),
+      ]);
+      const zones = zoneSnap.docs.map((d) => ({ id: d.id, ...(d.data() as any) }));
+      const hubs = hubSnap.docs.map((d) => ({ id: d.id, ...(d.data() as any) }));
+      const serviceFields = buildAddressServiceFields({ pincode: formData.pincode }, zones, hubs);
+
       await addDoc(collection(db, "tenants", user.tenantId, "addresses"), {
-        customerId: user.uid, tenantId: user.tenantId, label: finalLabel, line1: formData.line1, area: formData.area, pincode: formData.pincode, city: formData.city, isDefault: true, createdAt: serverTimestamp()
+        customerId: user.uid, tenantId: user.tenantId, label: finalLabel, line1: formData.line1, area: formData.area, pincode: formData.pincode, city: formData.city, isDefault: true, ...serviceFields, createdAt: serverTimestamp()
       });
 
       onComplete();

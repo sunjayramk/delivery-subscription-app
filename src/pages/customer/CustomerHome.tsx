@@ -27,6 +27,8 @@ import ProfileTab from "./ProfileTab";
 import CartTab from "./CartTab";
 import SubscriptionModal from "./SubscriptionModal";
 import { useCart } from "../../context/CartContext";
+import type { DateLike, DeliverySlot } from "../../services/deliverySlots";
+import { buildAddressServiceFields, buildDeliveryAddressSnapshot, buildOrderRouteSnapshot, getAddressRouteStatus, type AddressRouteStatus, type ServiceHub, type ServiceZone } from "../../services/addressRoutes";
 
 // Authentication & Tenant Bouncers
 import { useTenantResolver } from "../../hooks/useTenantResolver";
@@ -60,6 +62,7 @@ interface Order {
 }
 
 interface DeliveryAddress {
+  addressId?: string;
   label: string;
   line1: string;
   area?: string;
@@ -67,6 +70,13 @@ interface DeliveryAddress {
   pincode?: string;
   phone?: string;
   mapUrl?: string;
+  routeStatus?: AddressRouteStatus;
+  hubId?: string | null;
+  hubName?: string | null;
+  zoneId?: string | null;
+  zoneName?: string | null;
+  routeId?: string | null;
+  routeName?: string | null;
 }
 
 interface Subscription {
@@ -83,6 +93,9 @@ interface Subscription {
   vacationFrom?: string;
   vacationTo?: string;
   deliveryAddress?: DeliveryAddress;
+  shift?: string;
+  deliveryShift?: string;
+  startDate?: DateLike;
 }
 
 interface Address {
@@ -95,6 +108,13 @@ interface Address {
   phone?: string;
   mapUrl?: string;
   isDefault?: boolean;
+  routeStatus?: AddressRouteStatus;
+  hubId?: string | null;
+  hubName?: string | null;
+  zoneId?: string | null;
+  zoneName?: string | null;
+  routeId?: string | null;
+  routeName?: string | null;
 }
 
 interface WalletTransaction {
@@ -126,6 +146,28 @@ function formatAddress(addr: DeliveryAddress | undefined): string {
   return [addr.label, addr.line1, addr.area, addr.city, addr.pincode].filter(Boolean).join(", ");
 }
 
+function mapAddressDoc(docSnap: any, zones: ServiceZone[] = [], hubs: ServiceHub[] = []): Address {
+  const data = docSnap.data() as any;
+  const serviceFields = buildAddressServiceFields(data, zones, hubs);
+  return {
+    id: docSnap.id,
+    label: data.label || "",
+    line1: data.line1 || "",
+    area: data.area || "",
+    city: data.city || "",
+    pincode: data.pincode || "",
+    phone: data.phone || "",
+    mapUrl: data.mapUrl || "",
+    isDefault: data.isDefault ?? false,
+    routeStatus: serviceFields.routeStatus,
+    hubId: serviceFields.hubId || null,
+    hubName: serviceFields.hubName || null,
+    zoneId: serviceFields.zoneId || null,
+    zoneName: serviceFields.zoneName || null,
+    routeId: serviceFields.routeId || null,
+    routeName: serviceFields.routeName || null,
+  };
+}
 
 export default function CustomerHome() {
   // =========================================================================
@@ -141,7 +183,6 @@ export default function CustomerHome() {
   const [products, setProducts] = useState<Product[]>([]);
   const { cart, clearCart, cartItemsCount } = useCart();
   const [isCheckingOut, setIsCheckingOut] = useState(false);
-  const [checkoutShift, setCheckoutShift] = useState<"Morning" | "Evening">("Morning");
   const [categories, setCategories] = useState<{ id: string; name: string }[]>([]);
   const [banners, setBanners] = useState<{ id: string; imageUrl: string }[]>([]);
   const [loadingProducts, setLoadingProducts] = useState(true);
@@ -368,7 +409,7 @@ export default function CustomerHome() {
 
   useEffect(() => {
     async function loadSubscriptions() {
-      if (activeTab !== "subscriptions" && activeTab !== "dashboard") return;
+      if (activeTab !== "subscriptions" && activeTab !== "dashboard" && activeTab !== "cart") return;
       if (!user || !user.tenantId) { setLoadingSubs(false); return; }
       try {
         const qSubs = query(collection(db, "tenants", user.tenantId, "subscriptions"), where("customerId", "==", user.uid));
@@ -380,6 +421,7 @@ export default function CustomerHome() {
             id: docSnap.id, productName: data.productName || "", unit: data.unit || "", price: data.price ?? 0, qty: data.qty ?? 1,
             scheduleType: data.scheduleType || "daily", scheduleDays: data.scheduleDays ?? undefined, isActive: data.isActive ?? true,
             dayQuantities: data.dayQuantities ?? undefined, skipDates: data.skipDates ?? undefined, vacationFrom: data.vacationFrom ?? undefined, vacationTo: data.vacationTo ?? undefined, deliveryAddress: data.deliveryAddress ?? undefined,
+            shift: data.shift ?? undefined, deliveryShift: data.deliveryShift ?? undefined, startDate: data.startDate ?? undefined,
           });
         });
         setSubscriptions(list);
@@ -392,12 +434,16 @@ export default function CustomerHome() {
     async function loadAddresses() {
       if (!user || !user.tenantId) { setLoadingAddresses(false); return; }
       try {
-        const qAddr = query(collection(db, "tenants", user.tenantId, "addresses"), where("customerId", "==", user.uid));
-        const snap = await getDocs(qAddr);
+        const [snap, zoneSnap, hubSnap] = await Promise.all([
+          getDocs(query(collection(db, "tenants", user.tenantId, "addresses"), where("customerId", "==", user.uid))),
+          getDocs(collection(db, "tenants", user.tenantId, "zones")),
+          getDocs(collection(db, "tenants", user.tenantId, "hubs")),
+        ]);
+        const zones = zoneSnap.docs.map((d) => ({ id: d.id, ...(d.data() as any) }));
+        const hubs = hubSnap.docs.map((d) => ({ id: d.id, ...(d.data() as any) }));
         const list: Address[] = [];
         snap.forEach((docSnap) => {
-          const data = docSnap.data() as any;
-          list.push({ id: docSnap.id, label: data.label || "", line1: data.line1 || "", area: data.area || "", city: data.city || "", pincode: data.pincode || "", phone: data.phone || "", mapUrl: data.mapUrl || "", isDefault: data.isDefault ?? false });
+          list.push(mapAddressDoc(docSnap, zones, hubs));
         });
         setAddresses(list);
       } catch (err) { setErrorAddresses("Failed to load addresses."); } finally { setLoadingAddresses(false); }
@@ -459,12 +505,16 @@ export default function CustomerHome() {
 
   async function reloadAddresses() {
     if (!user || !user.tenantId) return;
-    const qAddr = query(collection(db, "tenants", user.tenantId, "addresses"), where("customerId", "==", user.uid));
-    const snap = await getDocs(qAddr);
+    const [snap, zoneSnap, hubSnap] = await Promise.all([
+      getDocs(query(collection(db, "tenants", user.tenantId, "addresses"), where("customerId", "==", user.uid))),
+      getDocs(collection(db, "tenants", user.tenantId, "zones")),
+      getDocs(collection(db, "tenants", user.tenantId, "hubs")),
+    ]);
+    const zones = zoneSnap.docs.map((d) => ({ id: d.id, ...(d.data() as any) }));
+    const hubs = hubSnap.docs.map((d) => ({ id: d.id, ...(d.data() as any) }));
     const list: Address[] = [];
     snap.forEach((docSnap) => {
-      const data = docSnap.data() as any;
-      list.push({ id: docSnap.id, label: data.label || "", line1: data.line1 || "", area: data.area || "", city: data.city || "", pincode: data.pincode || "", phone: data.phone || "", mapUrl: data.mapUrl || "", isDefault: data.isDefault ?? false });
+      list.push(mapAddressDoc(docSnap, zones, hubs));
     });
     setAddresses(list);
   }
@@ -553,20 +603,30 @@ export default function CustomerHome() {
     } catch (err) { showToast("Failed to update date.", "error"); }
   }
 
-    const handleCheckout = async (overrideAddressId?: string) => {
+    const handleCheckout = async (overrideAddressId: string | undefined, selectedSlot: DeliverySlot) => {
     if (cartItemsCount === 0 || !user || !user.tenantId) return;
     const selectedAddress = overrideAddressId ? addresses.find(a => a.id === overrideAddressId) : (addresses.find(a => a.isDefault) || addresses[0]);
     if (!selectedAddress) { showToast("Please add a delivery address in your Profile first!", "error"); setActiveTab("profile"); return; }
+    if (!selectedSlot) { showToast("Please select a delivery slot.", "error"); return; }
+    const routeStatus = getAddressRouteStatus(selectedAddress);
+    if (routeStatus === "unserviceable") {
+      showToast("This address is outside the current service area. Please choose another address.", "error");
+      return;
+    }
     setIsCheckingOut(true);
     try {
       const orderItems = Object.entries(cart).map(([productId, qty]) => {
         const p = products.find(x => x.id === productId);
-        return { productId, name: p?.name || "Unknown Item", price: p?.price || 0, qty };
+        return { productId, name: p?.name || "Unknown Item", unit: p?.unit || "", price: p?.price || 0, qty };
       });
+      const deliveryDate = selectedSlot.date;
+      const deliveryShift = selectedSlot.shift;
+      const deliveryAddress = buildDeliveryAddressSnapshot(selectedAddress);
+      const routeSnapshot = buildOrderRouteSnapshot(selectedAddress);
       await addDoc(collection(db, "tenants", user.tenantId, "orders"), {
-        tenantId: user.tenantId, customerId: user.uid, customerName: user.name || "Customer", items: orderItems, totalAmount: cartTotal, status: "pending", type: "one-time", shift: checkoutShift, date: new Date().toISOString().split('T')[0], createdAt: serverTimestamp(), deliveryAddress: { label: selectedAddress.label, line1: selectedAddress.line1, area: selectedAddress.area || "", city: selectedAddress.city || "", pincode: selectedAddress.pincode || "", phone: selectedAddress.phone || "", mapUrl: selectedAddress.mapUrl || "" }
+        tenantId: user.tenantId, customerId: user.uid, customerName: user.name || "Customer", items: orderItems, totalAmount: cartTotal, status: "pending", type: "one-time", deliveryDate, deliveryShift, shift: deliveryShift, date: deliveryDate, orderDate: deliveryDate, createdAt: serverTimestamp(), deliveryAddress, ...routeSnapshot, routeSource: "address"
       });
-      clearCart(); showToast("Success Order placed successfully!"); setActiveTab("orders");
+      clearCart(); showToast(routeStatus === "needs_review" ? "Order placed. Admin will assign the delivery route." : "Success Order placed successfully!"); setActiveTab("orders");
     } catch (error) { showToast("Failed to place order. Please try again.", "error"); } finally { setIsCheckingOut(false); }
   };
 
@@ -650,8 +710,9 @@ export default function CustomerHome() {
             <CartTab 
               products={products} 
               addresses={addresses} 
-              checkoutShift={checkoutShift} 
-              setCheckoutShift={setCheckoutShift} 
+              subscriptions={activeSubs}
+              loadingSubscriptions={loadingSubs}
+              cutoffTime={tenantSettings?.operations?.customerCutoffTime}
               handleCheckout={handleCheckout} 
               isCheckingOut={isCheckingOut} 
               setActiveTab={setActiveTab} 

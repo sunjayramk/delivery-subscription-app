@@ -35,6 +35,19 @@ function shiftOrder(shift?: string) {
   return 3;
 }
 
+function readOrderDateString(value: any) {
+  if (!value) return "";
+  if (typeof value === "string") return value.slice(0, 10);
+  if (value instanceof Date) return getLocalDateString(value);
+  if (typeof value.toDate === "function") return getLocalDateString(value.toDate());
+  if (typeof value.seconds === "number") return getLocalDateString(new Date(value.seconds * 1000));
+  return "";
+}
+
+function readOrderShift(data: any) {
+  return data.deliveryShift || data.shift || "Morning";
+}
+
 const CANCELLATION_REASONS = [
   "Customer not available",
   "Door locked",
@@ -77,10 +90,12 @@ export default function AgentDashboard() {
   useEffect(() => {
     async function loadAgentData() {
       if (!user?.tenantId) return;
+      const tenantId = user.tenantId;
+      const agentId = user.uid;
       setLoading(true);
       try {
         // 1. Fetch Global Settings
-        const settingsSnap = await getDoc(doc(db, "tenants", user.tenantId, "settings", "global"));
+        const settingsSnap = await getDoc(doc(db, "tenants", tenantId, "settings", "global"));
         if (settingsSnap.exists()) {
           const d = settingsSnap.data();
           setAgentSettings({
@@ -89,83 +104,137 @@ export default function AgentDashboard() {
           });
         }
 
-        // FIX 1: Only fetch THIS agent's assigned customers, not the whole store
-        const assignQ = query(
-          collection(db, "tenants", user.tenantId, "customerAssignments"),
-          where("agentId", "==", user.uid)
+        const assignedRouteIds = new Set<string>();
+        const assignedRouteNames = new Set<string>();
+        const assignedRouteNameById: Record<string, string> = {};
+
+        const routeQ = query(
+          collection(db, "tenants", tenantId, "routes"),
+          where("assignedAgentId", "==", agentId)
         );
-        const assignSnap = await getDocs(assignQ);
-        
-        const myCustomerIds = new Set<string>();
-        const routeMap: Record<string, string> = {};
-        
-        assignSnap.forEach((d) => {
+        const routeSnap = await getDocs(routeQ);
+        routeSnap.forEach((d) => {
           const data = d.data() as any;
-          if (data.customerId) {
-            myCustomerIds.add(data.customerId);
-            routeMap[data.customerId] = data.routeName || "Unassigned";
+          assignedRouteIds.add(d.id);
+          if (data.name) {
+            assignedRouteNames.add(data.name);
+            assignedRouteNameById[d.id] = data.name;
           }
         });
 
-        // If this agent has no assigned customers, stop here and save database reads!
-        if (myCustomerIds.size === 0) {
+        if (assignedRouteIds.size === 0 && assignedRouteNames.size === 0) {
           setAllOrders([]);
           setDebugInfo({ customers: 0, totalOrdersFound: 0 });
           setLoading(false);
           return;
         }
 
-        // FIX 2: Only fetch orders for the 5 dates shown in the UI slider.
-        // (This prevents the app from downloading years of historical data)
-        const qOrders = query(
-          collection(db, "tenants", user.tenantId, "orders"), 
-          where("orderDate", "in", availableDates) // 'orderDate' is what our automated script saves!
-        );
-        const ordersSnap = await getDocs(qOrders);
+        const customerRouteMap: Record<string, { routeId?: string; routeName: string; zoneId?: string; hubId?: string }> = {};
+        const addressRouteMap: Record<string, { routeId?: string; routeName: string; zoneId?: string; hubId?: string; customerId?: string }> = {};
+        const assignmentsSnap = await getDocs(collection(db, "tenants", tenantId, "customerAssignments"));
+
+        assignmentsSnap.forEach((d) => {
+          const data = d.data() as any;
+          if (!data.customerId) return;
+
+          const routeId = data.routeId || "";
+          const routeName = data.routeName || "";
+          const matchesAssignedRoute =
+            (routeId && assignedRouteIds.has(routeId)) ||
+            (routeName && assignedRouteNames.has(routeName));
+
+          if (!matchesAssignedRoute) return;
+
+          customerRouteMap[data.customerId] = {
+            routeId: routeId || undefined,
+            routeName: routeName || assignedRouteNameById[routeId] || "Unassigned",
+            zoneId: data.zoneId || undefined,
+            hubId: data.hubId || undefined,
+          };
+        });
+
+        const addressesSnap = await getDocs(collection(db, "tenants", tenantId, "addresses"));
+        addressesSnap.forEach((d) => {
+          const data = d.data() as any;
+          const routeId = data.routeId || "";
+          const routeName = data.routeName || "";
+          const matchesAssignedRoute =
+            (routeId && assignedRouteIds.has(routeId)) ||
+            (routeName && assignedRouteNames.has(routeName));
+
+          if (!matchesAssignedRoute) return;
+
+          addressRouteMap[d.id] = {
+            routeId: routeId || undefined,
+            routeName: routeName || assignedRouteNameById[routeId] || "Unassigned",
+            zoneId: data.zoneId || undefined,
+            hubId: data.hubId || undefined,
+            customerId: data.customerId || undefined,
+          };
+        });
+
+        // Fetch all date-field schemas so new one-time orders and legacy orders both appear.
+        const orderDocs = new Map<string, any>();
+        const fetchOrdersForField = async (fieldName: "deliveryDate" | "orderDate" | "date") => {
+          const ordersQ = query(
+            collection(db, "tenants", tenantId, "orders"),
+            where(fieldName, "in", availableDates)
+          );
+          const snap = await getDocs(ordersQ);
+          snap.docs.forEach((d) => orderDocs.set(d.id, d));
+        };
+
+        await Promise.all([
+          fetchOrdersForField("deliveryDate"),
+          fetchOrdersForField("orderDate"),
+          fetchOrdersForField("date"),
+        ]);
+
         const rawList: any[] = [];
-        
-        // FIX 3: Cache user names so we don't fetch the same customer's name multiple times
-        const userCache: Record<string, string> = {};
 
-        for (const docSnap of ordersSnap.docs) {
+        for (const docSnap of orderDocs.values()) {
           const data = docSnap.data() as any;
-          
-          // Only process orders belonging to THIS agent's customers
-          if (!myCustomerIds.has(data.customerId)) continue;
-          // Filter out cancelled orders in memory
-          if (["pending", "delivered", "not_delivered"].indexOf(data.status) === -1) continue;
 
-          let orderDateStr = data.orderDate || data.date;
-          if (!orderDateStr && data.createdAt) {
-             orderDateStr = getLocalDateString(data.createdAt.toDate());
-          }
-          if (!orderDateStr) orderDateStr = todayStr;
+          if (["pending", "delivered", "not_delivered", "cancelled"].indexOf(data.status) === -1) continue;
 
-          // ROLLOVER LOGIC: Move missed pending orders to today
-          if (data.status === "pending" && orderDateStr < todayStr) {
-             orderDateStr = todayStr;
-          }
+          const addressId = data.addressId || data.deliveryAddress?.addressId || "";
+          const addressMappedRoute = addressId ? addressRouteMap[addressId] : undefined;
+          const mappedRoute = customerRouteMap[data.customerId];
+          const addressRoute = data.deliveryAddress || {};
+          const routeId = data.routeId || addressRoute.routeId || addressMappedRoute?.routeId || mappedRoute?.routeId || "";
+          const routeName = data.routeName || addressRoute.routeName || addressMappedRoute?.routeName || mappedRoute?.routeName || "";
+          const matchesAssignedRoute =
+            (routeId && assignedRouteIds.has(routeId)) ||
+            (routeName && assignedRouteNames.has(routeName));
 
-          // Fetch missing names safely and cache them
-          let finalName = data.customerName;
-          if (!finalName) {
-            if (!userCache[data.customerId]) {
-               const uSnap = await getDoc(doc(db, "users", data.customerId));
-               userCache[data.customerId] = uSnap.exists() ? uSnap.data().name : "Unknown";
-            }
-            finalName = userCache[data.customerId];
-          }
+          if (!matchesAssignedRoute) continue;
+
+          const createdAtDateStr = readOrderDateString(data.createdAt);
+          const orderDateStr =
+            readOrderDateString(data.deliveryDate) ||
+            readOrderDateString(data.orderDate) ||
+            readOrderDateString(data.date) ||
+            createdAtDateStr ||
+            todayStr;
 
           rawList.push({ 
             id: docSnap.id, 
             ...data, 
-            customerName: finalName,
-            routeName: routeMap[data.customerId],
-            computedDate: orderDateStr
+            customerName: data.customerName || "Customer",
+            routeId: routeId || undefined,
+            routeName: routeName || "Unassigned",
+            zoneId: data.zoneId || addressRoute.zoneId || addressMappedRoute?.zoneId || mappedRoute?.zoneId,
+            hubId: data.hubId || addressRoute.hubId || addressMappedRoute?.hubId || mappedRoute?.hubId,
+            computedDate: orderDateStr,
+            computedShift: readOrderShift(data),
           });
         }
 
-        setDebugInfo({ customers: myCustomerIds.size, totalOrdersFound: rawList.length });
+        const addressCustomerIds = Object.values(addressRouteMap)
+          .map((route) => route.customerId)
+          .filter((id): id is string => Boolean(id));
+        const assignedCustomerIds = new Set([...Object.keys(customerRouteMap), ...addressCustomerIds]);
+        setDebugInfo({ customers: assignedCustomerIds.size, totalOrdersFound: rawList.length });
         setAllOrders(rawList);
         setEditedQuantities({}); 
       } catch (err) { 
@@ -182,7 +251,7 @@ export default function AgentDashboard() {
   const uniqueRoutes = useMemo(() => Array.from(new Set(ordersForSelectedDate.map(o => o.routeName))).filter(Boolean), [ordersForSelectedDate]);
   
   const filteredOrders = ordersForSelectedDate.filter(o => 
-    (selectedShift === "All" || o.shift === selectedShift) &&
+    (selectedShift === "All" || o.computedShift === selectedShift) &&
     (selectedRoute === "All" || o.routeName === selectedRoute)
   );
 
@@ -191,20 +260,20 @@ export default function AgentDashboard() {
       .filter(o =>
         o.status === "pending" &&
         o.computedDate < todayStr &&
-        (selectedShift === "All" || o.shift === selectedShift) &&
+        (selectedShift === "All" || o.computedShift === selectedShift) &&
         (selectedRoute === "All" || o.routeName === selectedRoute)
       )
       .sort((a, b) => {
         const dateCompare = String(a.computedDate || "").localeCompare(String(b.computedDate || ""));
         if (dateCompare !== 0) return dateCompare;
-        const shiftCompare = shiftOrder(a.shift) - shiftOrder(b.shift);
+        const shiftCompare = shiftOrder(a.computedShift) - shiftOrder(b.computedShift);
         if (shiftCompare !== 0) return shiftCompare;
         return String(a.customerName || "").localeCompare(String(b.customerName || ""));
       });
   }, [allOrders, selectedShift, selectedRoute, todayStr]);
   
   const pendingOrders = filteredOrders.filter(o => o.status === "pending");
-  const completedOrders = filteredOrders.filter(o => o.status === "delivered" || o.status === "not_delivered");
+  const completedOrders = filteredOrders.filter(o => o.status === "delivered" || o.status === "not_delivered" || o.status === "cancelled");
   const routeViewOrders = useMemo(() => {
     if (routeView === "pending") return pendingOrders;
     if (routeView === "completed") return completedOrders;
@@ -304,7 +373,7 @@ export default function AgentDashboard() {
             <div style={{ textAlign: "right" }}>
               <div style={{ fontSize: 24, fontWeight: 800 }}>{pendingOrders.length}</div>
               <div style={{ fontSize: 11, color: "#9ca3af", fontWeight: 600 }}>of {filteredOrders.length} Stops Left</div>
-              <div style={{ fontSize: 11, color: "#9ca3af", marginTop: 4 }}>Assigned {debugInfo.customers} customers · {debugInfo.totalOrdersFound} orders</div>
+              <div style={{ fontSize: 11, color: "#9ca3af", marginTop: 4 }}>Assigned {debugInfo.customers} customers - {debugInfo.totalOrdersFound} orders</div>
               {selectedDateStr === todayStr && overdueOrders.length > 0 && (
                 <div style={{ fontSize: 11, color: "#fca5a5", fontWeight: 700, marginTop: 4 }}>{overdueOrders.length} overdue</div>
               )}
@@ -520,7 +589,7 @@ export default function AgentDashboard() {
                     <div style={{ display: "flex", justifyContent: "space-between", gap: 12 }}>
                       <div>
                         <div style={{ color: "#111827", fontSize: 14, fontWeight: 800 }}>{order.customerName || "Customer"}</div>
-                        <div style={{ color: "#6b7280", fontSize: 12, marginTop: 4 }}>{order.computedDate} · {order.shift || "No shift"}</div>
+                        <div style={{ color: "#6b7280", fontSize: 12, marginTop: 4 }}>{order.computedDate} - {order.computedShift || "No shift"}</div>
                       </div>
                       <div style={{ color: "#9a3412", fontSize: 12, fontWeight: 800, whiteSpace: "nowrap" }}>{(order.items || []).length} items</div>
                     </div>

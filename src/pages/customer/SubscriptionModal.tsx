@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { db } from "../../firebase";
 import { collection, addDoc, serverTimestamp } from "firebase/firestore";
+import { buildDeliveryAddressSnapshot, buildOrderRouteSnapshot, getAddressRouteStatus } from "../../services/addressRoutes";
 
 const DAY_LABELS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 
@@ -43,6 +44,11 @@ export default function SubscriptionModal({ product, user, addresses, onClose, o
 
     const selectedAddress = addresses.find((a) => a.id === addressId);
     if (!selectedAddress) { setError("Selected address not found."); return; }
+    const routeStatus = getAddressRouteStatus(selectedAddress);
+    if (routeStatus === "unserviceable") {
+      setError("This address is outside the current service area. Please choose another address.");
+      return;
+    }
 
     const formattedDayQuantities: Record<string, number> = {};
     Object.entries(dayQuantities).forEach(([dayIndexStr, val]) => {
@@ -57,11 +63,15 @@ export default function SubscriptionModal({ product, user, addresses, onClose, o
 
     try {
       const startDateValue = startDate ? new Date(startDate) : new Date();
+      const deliveryAddress = buildDeliveryAddressSnapshot(selectedAddress);
+      const routeSnapshot = buildOrderRouteSnapshot(selectedAddress);
       const baseData: any = {
         tenantId: user.tenantId, customerId: user.uid, customerName: user.name || "Customer", productId: product.id, productName: product.name, unit: product.unit,
         price: product.price, qty: qtyNumber, scheduleType: schedule, isActive: true, createdAt: serverTimestamp(), startDate: startDateValue, 
         shift,
-        deliveryAddress: { label: selectedAddress.label, line1: selectedAddress.line1, area: selectedAddress.area || "", city: selectedAddress.city || "", pincode: selectedAddress.pincode || "", phone: selectedAddress.phone || "", mapUrl: selectedAddress.mapUrl || "" },
+        deliveryAddress,
+        ...routeSnapshot,
+        routeSource: "address",
       };
       if (schedule === "custom") { baseData.scheduleDays = customDays; }
       if (Object.keys(formattedDayQuantities).length > 0) { baseData.dayQuantities = formattedDayQuantities; }

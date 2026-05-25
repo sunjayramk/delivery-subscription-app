@@ -641,9 +641,18 @@ export default function AdminDashboard() {
     } catch (e:any) { console.error("INVOICE ERROR:", e); setInvError("Failed."); } finally { setInvSaving(false); }
   }
 
-  async function handleUpdateOrderStatus(id: string, status: string) {
+  async function handleUpdateOrderStatus(id: string, status: string, cancellationReason?: string) {
     if (!tenant) return;
-    await updateDoc(doc(db, "tenants", tenant.id, "orders", id), { status });
+    const normalizedStatus = status === "not_delivered" || status === "cancelled" ? "not_delivered" : status;
+    const updates: any = { status: normalizedStatus };
+    if (normalizedStatus === "not_delivered") {
+      updates.cancellationReason = cancellationReason || "Cancelled by admin";
+      updates.cancelledBy = userId || "admin";
+      updates.cancelledAt = serverTimestamp();
+    } else {
+      updates.cancellationReason = null;
+    }
+    await updateDoc(doc(db, "tenants", tenant.id, "orders", id), updates);
     loadOrders(tenant.id);
   }
 

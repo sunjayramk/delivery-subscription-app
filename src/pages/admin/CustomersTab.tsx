@@ -1,10 +1,11 @@
 import { useEffect, useState, useMemo } from "react";
 import { useAuth } from "../../context/AuthContext";
 import { db } from "../../firebase";
-import { 
-  collection, query, where, getDocs, doc, setDoc, 
-  addDoc, serverTimestamp 
+import {
+  collection, query, where, getDocs, doc, setDoc,
+  addDoc, serverTimestamp, updateDoc
 } from "firebase/firestore";
+import { buildAddressServiceFields, getAddressRouteStatus, getRouteLabel, type ServiceHub, type ServiceZone } from "../../services/addressRoutes";
 
 interface Customer {
   id: string;
@@ -20,6 +21,15 @@ interface Customer {
   customDeliveryFeeAmount?: number;
 }
 
+interface RouteOption {
+  id: string;
+  name: string;
+  zoneId?: string;
+  zoneName?: string;
+  hubId?: string;
+  hubName?: string;
+}
+
 function readDate(value: any) {
   if (value?.toDate) return value.toDate();
   if (value instanceof Date) return value;
@@ -33,7 +43,9 @@ function readDate(value: any) {
 export default function Customers() {
   const { user } = useAuth();
   const [customers, setCustomers] = useState<Customer[]>([]);
-  const [availableRoutes, setAvailableRoutes] = useState<{id: string, name: string}[]>([]);
+  const [availableRoutes, setAvailableRoutes] = useState<RouteOption[]>([]);
+  const [serviceZones, setServiceZones] = useState<ServiceZone[]>([]);
+  const [serviceHubs, setServiceHubs] = useState<ServiceHub[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
 
@@ -76,10 +88,32 @@ useEffect(() => {
     if (!user?.tenantId) return;
     setLoading(true);
     try {
-      // Fetch Routes first
-      const rQ = query(collection(db, "tenants", user.tenantId, "routes"));
-      const rSnap = await getDocs(rQ);
-      setAvailableRoutes(rSnap.docs.map(d => ({ id: d.id, name: d.data().name })));
+      const [hubSnap, zoneSnap, routeSnap] = await Promise.all([
+        getDocs(collection(db, "tenants", user.tenantId, "hubs")),
+        getDocs(collection(db, "tenants", user.tenantId, "zones")),
+        getDocs(collection(db, "tenants", user.tenantId, "routes")),
+      ]);
+
+      const hubsById = new Map(hubSnap.docs.map((d) => [d.id, { id: d.id, ...(d.data() as any) }]));
+      const zonesById = new Map(zoneSnap.docs.map((d) => [d.id, { id: d.id, ...(d.data() as any) }]));
+      const hubList = hubSnap.docs.map((d) => ({ id: d.id, ...(d.data() as any) }));
+      const zoneList = zoneSnap.docs.map((d) => ({ id: d.id, ...(d.data() as any) }));
+      const routeOptions = routeSnap.docs.map((d) => {
+        const route = { id: d.id, ...(d.data() as any) };
+        const zone = route.zoneId ? zonesById.get(route.zoneId) : undefined;
+        const hub = zone?.hubId ? hubsById.get(zone.hubId) : undefined;
+        return {
+          id: route.id,
+          name: route.name || "Unnamed Route",
+          zoneId: route.zoneId || undefined,
+          zoneName: zone?.name || undefined,
+          hubId: zone?.hubId || undefined,
+          hubName: hub?.name || undefined,
+        } as RouteOption;
+      });
+      setServiceHubs(hubList);
+      setServiceZones(zoneList);
+      setAvailableRoutes(routeOptions);
 
       // Fetch tenant users with the same simple query used by the main admin dashboard.
       // Filtering the role locally avoids needing a compound Firestore index for this tab.
@@ -120,7 +154,10 @@ useEffect(() => {
 
         // Addresses
         const addrSnap = await getDocs(query(collection(db, "tenants", user.tenantId, "addresses"), customerFilter));
-        setCustomerAddresses(addrSnap.docs.map(d => ({ id: d.id, ...d.data() })));
+        setCustomerAddresses(addrSnap.docs.map(d => {
+          const data = { id: d.id, ...d.data() } as any;
+          return { ...data, ...buildAddressServiceFields(data, serviceZones, serviceHubs) };
+        }));
 
         // Subscriptions
         const subsSnap = await getDocs(query(collection(db, "tenants", user.tenantId, "subscriptions"), customerFilter));
@@ -150,7 +187,7 @@ useEffect(() => {
       setWalletAdjAmount(""); setWalletAdjNote("");
       setHasCustomFee(selectedCustomer.hasCustomDeliveryFee || false); setCustomFeeAmount(selectedCustomer.customDeliveryFeeAmount || 0);
     }
-  }, [selectedCustomer?.id, user?.tenantId]);
+  }, [selectedCustomer?.id, user?.tenantId, serviceZones, serviceHubs]);
 
   const filteredCustomers = useMemo(() => {
     return customers.filter(c => {
@@ -169,13 +206,98 @@ useEffect(() => {
       const selectedRouteObj = availableRoutes.find(r => r.name === editRoute);
       const newRouteId = selectedRouteObj ? selectedRouteObj.id : null;
       await setDoc(doc(db, "users", selectedCustomer.id), { routeId: newRouteId, routeName: editRoute || "Unassigned" }, { merge: true });
-      await setDoc(doc(db, "tenants", user.tenantId, "customerAssignments", selectedCustomer.id), { customerId: selectedCustomer.id, routeName: editRoute || "Unassigned", hasCustomDeliveryFee: hasCustomFee, customDeliveryFeeAmount: hasCustomFee ? Number(customFeeAmount) : 0, updatedAt: serverTimestamp() }, { merge: true });
+      await setDoc(doc(db, "tenants", user.tenantId, "customerAssignments", selectedCustomer.id), {
+        customerId: selectedCustomer.id,
+        routeId: newRouteId,
+        routeName: editRoute || "Unassigned",
+        zoneId: selectedRouteObj?.zoneId || null,
+        zoneName: selectedRouteObj?.zoneName || null,
+        hubId: selectedRouteObj?.hubId || null,
+        hubName: selectedRouteObj?.hubName || null,
+        hasCustomDeliveryFee: hasCustomFee,
+        customDeliveryFeeAmount: hasCustomFee ? Number(customFeeAmount) : 0,
+        updatedAt: serverTimestamp()
+      }, { merge: true });
       
       const updatedCustomer = { ...selectedCustomer, routeId: newRouteId || undefined, routeName: editRoute || "Unassigned", hasCustomDeliveryFee: hasCustomFee, customDeliveryFeeAmount: hasCustomFee ? Number(customFeeAmount) : 0 };
       setCustomers(prev => prev.map(c => c.id === selectedCustomer.id ? updatedCustomer : c));
       setSelectedCustomer(updatedCustomer);
       alert("Settings updated successfully!");
     } catch(err) { alert("Failed to update settings."); } finally { setIsSaving(false); }
+  }
+
+  async function handleUpdateAddressRoute(addressId: string, routeId: string) {
+    if (!user?.tenantId || !selectedCustomer) return;
+    const selectedAddressRecord = customerAddresses.find((addr) => addr.id === addressId);
+    const selectedRoute = availableRoutes.find((route) => route.id === routeId);
+    const unassignedServiceFields = buildAddressServiceFields(selectedAddressRecord || {}, serviceZones, serviceHubs);
+    const routeData = selectedRoute
+      ? {
+          routeStatus: "assigned",
+          routeId: selectedRoute.id,
+          routeName: selectedRoute.name,
+          zoneId: selectedRoute.zoneId || null,
+          zoneName: selectedRoute.zoneName || null,
+          hubId: selectedRoute.hubId || null,
+          hubName: selectedRoute.hubName || null,
+        }
+      : {
+          routeStatus: unassignedServiceFields.routeStatus,
+          routeId: null,
+          routeName: null,
+          zoneId: unassignedServiceFields.zoneId || null,
+          zoneName: unassignedServiceFields.zoneName || null,
+          hubId: unassignedServiceFields.hubId || null,
+          hubName: unassignedServiceFields.hubName || null,
+        };
+    const updateData = { ...routeData, updatedAt: serverTimestamp() };
+    const nestedRouteData = {
+      "deliveryAddress.routeStatus": routeData.routeStatus,
+      "deliveryAddress.routeId": routeData.routeId,
+      "deliveryAddress.routeName": routeData.routeName,
+      "deliveryAddress.zoneId": routeData.zoneId,
+      "deliveryAddress.zoneName": routeData.zoneName,
+      "deliveryAddress.hubId": routeData.hubId,
+      "deliveryAddress.hubName": routeData.hubName,
+    };
+    const matchesSelectedAddress = (data: any) => {
+      if (data.addressId === addressId || data.deliveryAddress?.addressId === addressId) return true;
+      if (!selectedAddressRecord || !data.deliveryAddress) return false;
+
+      const savedAddress = data.deliveryAddress;
+      return (
+        String(savedAddress.label || "").trim() === String(selectedAddressRecord.label || "").trim() &&
+        String(savedAddress.line1 || "").trim() === String(selectedAddressRecord.line1 || "").trim() &&
+        String(savedAddress.pincode || "").trim() === String(selectedAddressRecord.pincode || "").trim()
+      );
+    };
+
+    try {
+      await updateDoc(doc(db, "tenants", user.tenantId, "addresses", addressId), updateData);
+      const [ordersSnap, subsSnap] = await Promise.all([
+        getDocs(query(collection(db, "tenants", user.tenantId, "orders"), where("customerId", "==", selectedCustomer.id))),
+        getDocs(query(collection(db, "tenants", user.tenantId, "subscriptions"), where("customerId", "==", selectedCustomer.id))),
+      ]);
+
+      const pendingOrderUpdates = ordersSnap.docs
+        .filter((orderDoc) => {
+          const data = orderDoc.data() as any;
+          return matchesSelectedAddress(data) && String(data.status || "pending").toLowerCase() === "pending";
+        })
+        .map((orderDoc) => updateDoc(doc(db, "tenants", user.tenantId!, "orders", orderDoc.id), { addressId, ...routeData, ...nestedRouteData, routeSource: "address", updatedAt: serverTimestamp() }));
+      const subscriptionUpdates = subsSnap.docs
+        .filter((subDoc) => {
+          const data = subDoc.data() as any;
+          return matchesSelectedAddress(data);
+        })
+        .map((subDoc) => updateDoc(doc(db, "tenants", user.tenantId!, "subscriptions", subDoc.id), { addressId, ...routeData, ...nestedRouteData, routeSource: "address", updatedAt: serverTimestamp() }));
+
+      await Promise.all([...pendingOrderUpdates, ...subscriptionUpdates]);
+      setCustomerAddresses((prev) => prev.map((addr) => addr.id === addressId ? { ...addr, ...updateData } : addr));
+    } catch (err) {
+      console.error("Failed to update address route", err);
+      alert("Failed to update address route.");
+    }
   }
 
   async function handleAdjustWallet() {
@@ -209,7 +331,20 @@ useEffect(() => {
       const newUserId = doc(collection(db, "users")).id;
       const selectedRouteObj = availableRoutes.find(r => r.name === addRoute);
       await setDoc(doc(db, "users", newUserId), { name: addName, email: addEmail, phone: addPhone, role: "customer", tenantId: user.tenantId, createdAt: serverTimestamp(), routeId: selectedRouteObj ? selectedRouteObj.id : null, routeName: addRoute || "Unassigned" });
-      await setDoc(doc(db, "tenants", user.tenantId, "customerAssignments", newUserId), { customerId: newUserId, agentId: "", routeName: addRoute || "Unassigned", hasCustomDeliveryFee: false, customDeliveryFeeAmount: 0, updatedAt: serverTimestamp(), createdAt: serverTimestamp() });
+      await setDoc(doc(db, "tenants", user.tenantId, "customerAssignments", newUserId), {
+        customerId: newUserId,
+        agentId: "",
+        routeId: selectedRouteObj?.id || null,
+        routeName: addRoute || "Unassigned",
+        zoneId: selectedRouteObj?.zoneId || null,
+        zoneName: selectedRouteObj?.zoneName || null,
+        hubId: selectedRouteObj?.hubId || null,
+        hubName: selectedRouteObj?.hubName || null,
+        hasCustomDeliveryFee: false,
+        customDeliveryFeeAmount: 0,
+        updatedAt: serverTimestamp(),
+        createdAt: serverTimestamp()
+      });
 
       const newCustomer: Customer = { id: newUserId, name: addName, email: addEmail, phone: addPhone, createdAt: new Date(), walletBalance: 0, routeId: selectedRouteObj?.id || undefined, routeName: addRoute || "Unassigned", status: "Active", hasCustomDeliveryFee: false, customDeliveryFeeAmount: 0 };
       setCustomers([newCustomer, ...customers]);
@@ -378,7 +513,23 @@ useEffect(() => {
                           <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
                             {customerAddresses.map(addr => (
                               <div key={addr.id} style={{ padding: 12, border: "1px solid #e5e7eb", borderRadius: 8, background: addr.isDefault ? "#f0fdf4" : "#fff" }}>
-                                <div style={{ fontWeight: 600, fontSize: 13 }}>{addr.label} {addr.isDefault && <span style={{ color: "#16a34a", fontSize: 10, marginLeft: 8 }}>DEFAULT</span>}</div>
+                                {(() => {
+                                  const routeStatus = getAddressRouteStatus(addr);
+                                  const emptyLabel = routeStatus === "unserviceable" ? "Non serviceable area" : "Needs route assignment";
+                                  const color = routeStatus === "assigned" ? { background: "#eff6ff", color: "#2563eb" } : routeStatus === "unserviceable" ? { background: "#fee2e2", color: "#b91c1c" } : { background: "#fef3c7", color: "#92400e" };
+                                  return (
+                                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 10 }}>
+                                  <div>
+                                    <div style={{ fontWeight: 600, fontSize: 13 }}>{addr.label} {addr.isDefault && <span style={{ color: "#16a34a", fontSize: 10, marginLeft: 8 }}>DEFAULT</span>}</div>
+                                    <span style={{ display: "inline-flex", marginTop: 6, padding: "2px 8px", borderRadius: 999, fontSize: 11, fontWeight: 800, ...color }}>{routeStatus === "needs_review" ? "Route review pending" : getRouteLabel(addr)}</span>
+                                  </div>
+                                  <select value={addr.routeId || ""} onChange={(event) => handleUpdateAddressRoute(addr.id, event.target.value)} style={{ minWidth: 190, padding: "7px 8px", borderRadius: 8, border: "1px solid #d1d5db", background: "#fff", fontSize: 12, fontWeight: 600 }}>
+                                    <option value="">{emptyLabel}</option>
+                                    {availableRoutes.map((route) => <option key={route.id} value={route.id}>{route.name}</option>)}
+                                  </select>
+                                </div>
+                                  );
+                                })()}
                                 <div style={{ fontSize: 13, color: "#6b7280", marginTop: 4 }}>{addr.line1}, {addr.area}, {addr.city} - {addr.pincode}</div>
                               </div>
                             ))}

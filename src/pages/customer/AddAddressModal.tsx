@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { db } from "../../firebase";
-import { collection, addDoc, serverTimestamp } from "firebase/firestore";
+import { collection, addDoc, getDocs, serverTimestamp } from "firebase/firestore";
+import { buildAddressServiceFields } from "../../services/addressRoutes";
 
 interface AddAddressModalProps {
   user: any;
@@ -28,9 +29,17 @@ export default function AddAddressModal({ user, onClose, onSuccess }: AddAddress
     setError("");
     
     try {
+      const [zoneSnap, hubSnap] = await Promise.all([
+        getDocs(collection(db, "tenants", user.tenantId, "zones")),
+        getDocs(collection(db, "tenants", user.tenantId, "hubs")),
+      ]);
+      const zones = zoneSnap.docs.map((d) => ({ id: d.id, ...(d.data() as any) }));
+      const hubs = hubSnap.docs.map((d) => ({ id: d.id, ...(d.data() as any) }));
+      const serviceFields = buildAddressServiceFields({ pincode: pincode.trim() }, zones, hubs);
+
       await addDoc(collection(db, "tenants", user.tenantId, "addresses"), {
         customerId: user.uid, tenantId: user.tenantId, label: label.trim(), line1: line1.trim(), area: area.trim(), 
-        city: city.trim(), pincode: pincode.trim(), phone: phone.trim(), isDefault, createdAt: serverTimestamp(),
+        city: city.trim(), pincode: pincode.trim(), phone: phone.trim(), isDefault, ...serviceFields, createdAt: serverTimestamp(),
       });
       onSuccess();
     } catch (err) { 

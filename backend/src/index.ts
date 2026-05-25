@@ -156,10 +156,19 @@ export const generateDailyOrders = onSchedule(
 
         // Fetch Route Assignments
         const assignSnap = await db.collection("tenants").doc(tenantId).collection("customerAssignments").get();
-        const routeMap: Record<string, string> = {};
+        const routeMap: Record<string, any> = {};
         assignSnap.forEach((d) => {
           const data = d.data();
-          if (data.customerId && data.routeName) routeMap[data.customerId] = data.routeName;
+          if (data.customerId) {
+            routeMap[data.customerId] = {
+              routeId: data.routeId || "",
+              routeName: data.routeName || "",
+              zoneId: data.zoneId || "",
+              zoneName: data.zoneName || "",
+              hubId: data.hubId || "",
+              hubName: data.hubName || "",
+            };
+          }
         });
 
         const ordersToCreate = new Map<string, any>();
@@ -191,21 +200,36 @@ export const generateDailyOrders = onSchedule(
 
             if (finalQty <= 0) return;
 
-            const shift = data.shift || "Morning";
-            const uniqueKey = `${customerId}_${shift}_${dateStr}`;
+            const shift = data.deliveryShift || data.shift || "Morning";
+            const deliveryAddress = data.deliveryAddress || null;
+            const fallbackRoute = routeMap[customerId] || {};
+            const addressId = data.addressId || deliveryAddress?.addressId || "";
+            const routeId = data.routeId || deliveryAddress?.routeId || fallbackRoute.routeId || "";
+            const routeName = data.routeName || deliveryAddress?.routeName || fallbackRoute.routeName || "";
+            const routeStatus = data.routeStatus || deliveryAddress?.routeStatus || (routeId || routeName ? "assigned" : "needs_review");
+            const uniqueKey = addressId ? `${customerId}_${shift}_${addressId}_${dateStr}` : `${customerId}_${shift}_${dateStr}`;
 
             // Group multiple subscriptions for the same person/day into one Order
             if (!ordersToCreate.has(uniqueKey)) {
-              const routeName = routeMap[customerId] || "";
               ordersToCreate.set(uniqueKey, {
                 tenantId,
                 customerId,
                 customerName: data.customerName || "Customer",
-                deliveryAddress: data.deliveryAddress || null,
-                routeName,
+                addressId: addressId || null,
+                deliveryAddress,
+                routeStatus,
+                routeId: routeId || null,
+                routeName: routeName || null,
+                zoneId: data.zoneId || deliveryAddress?.zoneId || fallbackRoute.zoneId || null,
+                zoneName: data.zoneName || deliveryAddress?.zoneName || fallbackRoute.zoneName || null,
+                hubId: data.hubId || deliveryAddress?.hubId || fallbackRoute.hubId || null,
+                hubName: data.hubName || deliveryAddress?.hubName || fallbackRoute.hubName || null,
+                routeSource: data.routeSource || (addressId ? "address" : "customer_fallback"),
                 status: "pending",
                 source: "subscription",
                 shift: shift,
+                deliveryShift: shift,
+                deliveryDate: dateStr,
                 date: dateStr,
                 orderDate: dateStr, 
                 items: [],
