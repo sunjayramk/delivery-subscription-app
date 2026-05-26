@@ -6,6 +6,13 @@ import { signOut } from "firebase/auth";
 import { auth } from "../../firebase";
 import { collection, query, where, getDocs, doc, updateDoc, serverTimestamp, getDoc, addDoc, setDoc, increment } from "firebase/firestore";
 import Toast from "../../components/common/Toast";
+import {
+  buildDeliveryInstanceLookupKey,
+  fetchDeliveryInstancesForDates,
+  normalizeDeliveryInstanceStatus,
+  readDeliveryInstanceItemQty,
+} from "../../services/deliveryInstances";
+import { createOneTimeFollowUpOrder } from "../../services/oneTimeFollowUps";
 
 // --- HELPERS ---
 function formatAddress(addr: any): string {
@@ -46,6 +53,16 @@ function readOrderDateString(value: any) {
 
 function readOrderShift(data: any) {
   return data.deliveryShift || data.shift || "Morning";
+}
+
+function normalizeAgentStatus(status: any) {
+  const normalized = normalizeDeliveryInstanceStatus(status);
+  if (normalized === "confirmed" || normalized === "expected") return "pending";
+  return normalized;
+}
+
+function isSubscriptionOrder(data: any) {
+  return data?.source === "subscription" || data?.type === "subscription";
 }
 
 const CANCELLATION_REASONS = [
@@ -191,6 +208,68 @@ export default function AgentDashboard() {
         ]);
 
         const rawList: any[] = [];
+        const preparedInstanceKeys = new Set<string>();
+        const preparedStops = new Map<string, any>();
+        const deliveryInstances = await fetchDeliveryInstancesForDates(tenantId, availableDates);
+
+        deliveryInstances.forEach((instance) => {
+          const routeId = instance.routeId || instance.deliveryAddress?.routeId || "";
+          const routeName = instance.routeName || instance.deliveryAddress?.routeName || "";
+          const matchesAssignedRoute =
+            (routeId && assignedRouteIds.has(routeId)) ||
+            (routeName && assignedRouteNames.has(routeName));
+
+          if (!matchesAssignedRoute) return;
+
+          const instanceKey = buildDeliveryInstanceLookupKey(instance);
+          preparedInstanceKeys.add(instanceKey);
+
+          const stopRow = {
+            id: instance.id,
+            deliveryInstanceId: instance.id,
+            deliveryInstanceIds: [instance.id],
+            deliveryInstanceKey: instanceKey,
+            recordType: "deliveryInstance",
+            customerId: instance.customerId,
+            customerName: instance.customerName || "Customer",
+            deliveryAddress: instance.deliveryAddress,
+            routeId: routeId || undefined,
+            routeName: routeName || "Unassigned",
+            zoneId: instance.zoneId || instance.deliveryAddress?.zoneId,
+            hubId: instance.hubId || instance.deliveryAddress?.hubId,
+            status: normalizeAgentStatus(instance.status),
+            sourceStatus: instance.status,
+            items: (instance.items || []).map((item, index) => ({
+              instanceItemIndex: index,
+              source: item.source,
+              sourceId: item.sourceId,
+              productId: item.productId,
+              name: item.name,
+              unit: item.unit,
+              price: item.price,
+              qty: readDeliveryInstanceItemQty(item, instance.status),
+              originalQty: item.originalQty,
+              plannedQty: item.plannedQty,
+              deliveredQty: item.deliveredQty,
+              fulfillmentStatus: item.fulfillmentStatus,
+              rescheduledQty: item.rescheduledQty,
+              followUpOrderId: item.followUpOrderId,
+            })),
+            computedDate: instance.deliveryDate,
+            computedShift: instance.shift,
+          };
+
+          const existingStop = preparedStops.get(instanceKey);
+          if (existingStop) {
+            existingStop.id = `${existingStop.id}_${instance.id}`;
+            existingStop.deliveryInstanceIds = [...existingStop.deliveryInstanceIds, instance.id];
+            existingStop.items = [...existingStop.items, ...stopRow.items];
+            if (existingStop.status !== "pending") existingStop.status = stopRow.status;
+          } else {
+            preparedStops.set(instanceKey, stopRow);
+          }
+        });
+        rawList.push(...preparedStops.values());
 
         for (const docSnap of orderDocs.values()) {
           const data = docSnap.data() as any;
@@ -216,6 +295,47 @@ export default function AgentDashboard() {
             readOrderDateString(data.date) ||
             createdAtDateStr ||
             todayStr;
+          const orderInstanceKey = buildDeliveryInstanceLookupKey({
+            customerId: data.customerId,
+            deliveryDate: orderDateStr,
+            shift: readOrderShift(data),
+            addressId,
+            deliveryAddress: data.deliveryAddress,
+          });
+
+          const preparedStop = preparedStops.get(orderInstanceKey);
+          if (preparedStop) {
+            const alreadyRepresented = preparedStop.items.some((item: any) => item.sourceId === docSnap.id);
+            if (alreadyRepresented) continue;
+
+            const orderItems = (data.items || []).map((item: any, index: number) => {
+              const qty = Number(item.qty || 0);
+              return {
+                instanceItemIndex: `order_${docSnap.id}_${index}`,
+                source: isSubscriptionOrder(data) ? "subscription" : "one-time",
+                sourceId: docSnap.id,
+                productId: item.productId || null,
+                name: item.name || item.productName || "Item",
+                unit: item.unit || "unit",
+                price: Number(item.price || 0),
+                qty,
+                originalQty: qty,
+                plannedQty: qty,
+                deliveredQty: null,
+                fulfillmentStatus: undefined,
+                rescheduledQty: null,
+                followUpOrderId: null,
+              };
+            });
+
+            preparedStop.id = `${preparedStop.id}_${docSnap.id}`;
+            preparedStop.items = [...preparedStop.items, ...orderItems];
+            preparedStop.status = normalizeAgentStatus(preparedStop.status);
+            preparedStop.containsLiveOrders = true;
+            continue;
+          }
+
+          if (preparedInstanceKeys.has(orderInstanceKey)) continue;
 
           rawList.push({ 
             id: docSnap.id, 
@@ -303,6 +423,156 @@ export default function AgentDashboard() {
     if (!user) return;
     setUpdatingId(order.id);
     try {
+      if (order.recordType === "deliveryInstance" || order.deliveryInstanceId) {
+        const instanceIds = Array.isArray(order.deliveryInstanceIds) && order.deliveryInstanceIds.length > 0
+          ? order.deliveryInstanceIds
+          : [order.deliveryInstanceId || order.id];
+        const instanceStatus = status === "delivered" ? "delivered" : "cancelled";
+        let finalPodUrl = "";
+
+        if (status === "delivered" && podFiles[order.id]) {
+          const fileRef = ref(storage, `tenants/${user.tenantId}/pod/${order.id}_${Date.now()}`);
+          await uploadBytes(fileRef, podFiles[order.id]);
+          finalPodUrl = await getDownloadURL(fileRef);
+        }
+
+        const finalItems = (order.items || []).map((it: any, idx: number) => {
+          const editedQty = editedQuantities[order.id]?.[idx];
+          const finalQty = editedQty !== undefined ? editedQty : Number(it.qty || 0);
+          const plannedQty = Number(it.plannedQty ?? it.qty ?? 0);
+          const balanceQty = status === "delivered" && it.source === "one-time" ? Math.max(0, plannedQty - finalQty) : 0;
+          return {
+            source: it.source || "manual",
+            sourceId: it.sourceId || null,
+            productId: it.productId || null,
+            name: it.name || "Item",
+            unit: it.unit || "unit",
+            price: Number(it.price || 0),
+            originalQty: Number(it.originalQty ?? it.qty ?? 0),
+            plannedQty,
+            deliveredQty: status === "delivered" ? finalQty : 0,
+            fulfillmentStatus: status === "delivered"
+              ? balanceQty > 0 ? "rescheduled" : "delivered"
+              : "cancelled",
+            rescheduledQty: balanceQty || null,
+            followUpOrderId: it.followUpOrderId || null,
+          };
+        });
+
+        const oneTimeBalanceGroups = new Map<string, { parentOrderId: string; items: any[]; indexes: number[] }>();
+        if (status === "delivered") {
+          finalItems.forEach((item: any, index: number) => {
+            if (item.source !== "one-time" || !item.sourceId || Number(item.rescheduledQty || 0) <= 0) return;
+            const current = oneTimeBalanceGroups.get(item.sourceId) || { parentOrderId: item.sourceId, items: [] as any[], indexes: [] as number[] };
+            current.items.push({
+              productId: item.productId,
+              name: item.name,
+              unit: item.unit,
+              price: item.price,
+              qty: Number(item.rescheduledQty || 0),
+            });
+            current.indexes.push(index);
+            oneTimeBalanceGroups.set(item.sourceId, current);
+          });
+        }
+
+        for (const group of oneTimeBalanceGroups.values()) {
+          const followUp = await createOneTimeFollowUpOrder({
+            tenantId: user.tenantId!,
+            customerId: order.customerId,
+            customerName: order.customerName || "Customer",
+            deliveryAddress: order.deliveryAddress,
+            routeId: order.routeId || null,
+            routeName: order.routeName || null,
+            zoneId: order.zoneId || null,
+            hubId: order.hubId || null,
+            parentOrderId: group.parentOrderId,
+            parentDeliveryInstanceId: order.deliveryInstanceId || order.id,
+            rescheduledFromDate: order.computedDate,
+            rescheduledFromShift: order.computedShift,
+            reason: "Balance quantity carried forward after partial delivery",
+            items: group.items,
+            createdBy: user.uid,
+            createdByName: user.name || user.email || "Agent",
+            createdByRole: user.role || "agent",
+          });
+          if (followUp?.id) {
+            group.indexes.forEach((index) => {
+              finalItems[index] = { ...finalItems[index], followUpOrderId: followUp.id };
+            });
+          }
+        }
+
+        const parentOneTimeOrderItems = new Map<string, any[]>();
+        finalItems.forEach((item: any) => {
+          if (item.source !== "one-time" || !item.sourceId) return;
+          const current = parentOneTimeOrderItems.get(item.sourceId) || [];
+          current.push({
+            productId: item.productId || null,
+            name: item.name || "Item",
+            unit: item.unit || "unit",
+            price: Number(item.price || 0),
+            qty: Number(item.plannedQty || 0),
+            deliveredQty: status === "delivered" ? Number(item.deliveredQty || 0) : 0,
+            rescheduledQty: item.rescheduledQty || null,
+            followUpOrderId: item.followUpOrderId || null,
+            fulfillmentStatus: item.fulfillmentStatus || (status === "delivered" ? "delivered" : "cancelled"),
+          });
+          parentOneTimeOrderItems.set(item.sourceId, current);
+        });
+
+        const changeLogEntry = {
+          type: "status_change",
+          reason: cancellationReason || (oneTimeBalanceGroups.size > 0 ? "Marked delivered with one-time balance carried forward" : status === "delivered" ? "Marked delivered by agent" : "Cancelled by agent"),
+          changedBy: user.uid,
+          changedByName: user.name || user.email || "Agent",
+          changedByRole: user.role || "agent",
+          changedAt: new Date().toISOString(),
+        };
+
+        const updateData: any = {
+          status: instanceStatus,
+          changeLog: [...(order.changeLog || []), changeLogEntry],
+          cancellationReason: status === "not_delivered" ? cancellationReason || "Cancelled by agent" : null,
+          updatedAt: serverTimestamp(),
+        };
+
+        if (instanceIds.length === 1) {
+          updateData.items = finalItems;
+        }
+
+        if (finalPodUrl || order.podUrl) {
+          updateData.podUrl = finalPodUrl || order.podUrl;
+        }
+
+        await Promise.all(instanceIds.map((instanceId: string) => updateDoc(doc(db, "tenants", user.tenantId!, "deliveryInstances", instanceId), updateData)));
+
+        await Promise.all(Array.from(parentOneTimeOrderItems.entries()).map(([parentOrderId, parentItems]) => {
+          const hasRescheduledBalance = parentItems.some((item) => Number(item.rescheduledQty || 0) > 0);
+          const parentUpdate: any = {
+            status: status === "delivered" ? "delivered" : "not_delivered",
+            fulfillmentStatus: status === "delivered"
+              ? hasRescheduledBalance ? "partially_rescheduled" : "delivered"
+              : "cancelled",
+            items: parentItems,
+            deliveryResultItems: parentItems,
+            deliveryInstanceId: order.deliveryInstanceId || order.id,
+            deliveredAt: status === "delivered" ? serverTimestamp() : null,
+            cancelledAt: status === "not_delivered" ? serverTimestamp() : null,
+            cancellationReason: status === "not_delivered" ? cancellationReason || "Cancelled by agent" : null,
+            updatedAt: serverTimestamp(),
+          };
+          if (finalPodUrl || order.podUrl) parentUpdate.podUrl = finalPodUrl || order.podUrl;
+          return updateDoc(doc(db, "tenants", user.tenantId!, "orders", parentOrderId), parentUpdate);
+        }));
+
+        setPodFiles(prev => { const copy = { ...prev }; delete copy[order.id]; return copy; });
+        setAllOrders(prev => prev.map(o => o.id === order.id ? { ...o, status: instanceStatus, items: finalItems, podUrl: finalPodUrl || order.podUrl, cancellationReason } : o));
+        setCancelOrder(null);
+        setToastMessage(status === "delivered" ? "Delivered!" : "Cancelled.");
+        return;
+      }
+
       const refDoc = doc(db, "tenants", user.tenantId!, "orders", order.id);
       let finalPodUrl = "";
 

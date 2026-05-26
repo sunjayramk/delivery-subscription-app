@@ -1,6 +1,8 @@
 //Admin - BillingTab.tsx
 
-import React from "react";
+import React, { useEffect, useMemo, useState } from "react";
+
+type BalanceFilter = "all" | "due" | "credit";
 
 interface BillingTabProps {
   cardStyle: React.CSSProperties;
@@ -35,6 +37,7 @@ interface BillingTabProps {
   handlePrintInvoice: (inv: any) => void;
   handleWhatsAppInvoice: (inv: any) => void;
   handlePayInvoice: (inv: any) => void;
+  initialBalanceFilter?: BalanceFilter;
 }
 
 const MONTHS = [
@@ -54,8 +57,29 @@ export default function BillingTab({
   setInvCustomerId, setInvYear, setInvMonth, setInvDeliveryCharge,
   handleRecordPayment, handleGenerateInvoice, formatCustomerLabel,
   handleWhatsAppReminder, customers, invoices, loadingInvoices,
-  handlePrintInvoice, handleWhatsAppInvoice, handlePayInvoice // Destructure them here
+  handlePrintInvoice, handleWhatsAppInvoice, handlePayInvoice,
+  initialBalanceFilter,
 }: BillingTabProps) {
+  const [balanceFilter, setBalanceFilter] = useState<BalanceFilter>("all");
+
+  useEffect(() => {
+    if (initialBalanceFilter) setBalanceFilter(initialBalanceFilter);
+  }, [initialBalanceFilter]);
+
+  const filteredAccounts = useMemo(() => {
+    return (accounts || []).filter((acc) => {
+      const balance = Number(acc.outstandingDue || 0);
+      if (balanceFilter === "due") return balance > 0;
+      if (balanceFilter === "credit") return balance < 0;
+      return true;
+    });
+  }, [accounts, balanceFilter]);
+
+  const balanceFilterLabels: Record<BalanceFilter, string> = {
+    all: "All Balances",
+    due: "Outstanding",
+    credit: "Amount Available",
+  };
 
   const inputStyle: React.CSSProperties = { padding: "8px", borderRadius: "6px", border: "1px solid #ccc", width: "100%", boxSizing: "border-box" };
   const labelStyle: React.CSSProperties = { fontSize: "12px", color: "#666", marginBottom: "4px", display: "block" };
@@ -73,7 +97,33 @@ export default function BillingTab({
       
       {/* --- Section 1: Record Payment & Outstanding Table --- */}
       <div style={cardStyle}>
-        <h3 style={{ marginTop: 0, display: "flex", alignItems: "center", gap: "8px" }}>$ Customer Billing</h3>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
+          <h3 style={{ margin: 0, display: "flex", alignItems: "center", gap: "8px" }}>$ Customer Billing</h3>
+          <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+            {(["all", "due", "credit"] as BalanceFilter[]).map((filter) => {
+              const active = balanceFilter === filter;
+              return (
+                <button
+                  key={filter}
+                  type="button"
+                  onClick={() => setBalanceFilter(filter)}
+                  style={{
+                    padding: "7px 11px",
+                    borderRadius: 999,
+                    border: active ? "1px solid #111827" : "1px solid #d1d5db",
+                    background: active ? "#111827" : "#fff",
+                    color: active ? "#fff" : "#374151",
+                    fontSize: 12,
+                    fontWeight: 700,
+                    cursor: "pointer",
+                  }}
+                >
+                  {balanceFilterLabels[filter]}
+                </button>
+              );
+            })}
+          </div>
+        </div>
         <h4 style={{ margin: "16px 0 8px" }}>Record Payment</h4>
         <form onSubmit={handleRecordPayment} style={{ display: "flex", gap: "12px", alignItems: "flex-end", flexWrap: "wrap", marginBottom: "20px" }}>
           <div style={{ display: "flex", flexDirection: "column", flex: 2, minWidth: "200px" }}>
@@ -103,7 +153,7 @@ export default function BillingTab({
             <thead>
               <tr>
                 <th style={thStyle}>Customer</th>
-                <th style={{ ...thStyle, textAlign: "right" }}>Outstanding (Rs.)</th>
+                <th style={{ ...thStyle, textAlign: "right" }}>Balance (Rs.)</th>
                 <th style={{ ...thStyle, textAlign: "center" }}>Action</th>
               </tr>
             </thead>
@@ -112,14 +162,14 @@ export default function BillingTab({
                 <tr><td colSpan={3} style={{ padding: "12px", textAlign: "center", color: "#666" }}>Loading balances...</td></tr>
               ) : accountsError ? (
                 <tr><td colSpan={3} style={{ padding: "12px", textAlign: "center", color: "red" }}>{accountsError}</td></tr>
-              ) : !accounts || accounts.length === 0 ? (
+              ) : !filteredAccounts || filteredAccounts.length === 0 ? (
                 <tr><td colSpan={3} style={{ padding: "12px", textAlign: "center", color: "#666" }}>No balances found.</td></tr>
               ) : (
-                accounts.map((acc) => (
+                filteredAccounts.map((acc) => (
                   <tr key={acc.id}>
                     <td style={tdStyle}>{formatCustomerLabel(acc.customerId)}</td>
                     <td style={{ ...tdStyle, textAlign: "right", color: acc.outstandingDue > 0 ? "#dc2626" : "#16a34a", fontWeight: 500 }}>
-                      Rs.{acc.outstandingDue?.toFixed(2) || "0.00"}
+                      {acc.outstandingDue > 0 ? "Due " : acc.outstandingDue < 0 ? "Cr " : ""}Rs.{Math.abs(acc.outstandingDue || 0).toFixed(2)}
                     </td>
                     <td style={{ ...tdStyle, textAlign: "center" }}>
                       {acc.outstandingDue > 0 && (

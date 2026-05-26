@@ -42,6 +42,13 @@ export function normalizeOrderStatus(status?: string): "pending" | "delivered" |
   return "other";
 }
 
+export function getOperationalOrderStatus(order: any): "pending" | "delivered" | "cancelled" | "other" {
+  const fulfillmentStatus = String(order?.fulfillmentStatus || "").trim().toLowerCase();
+  if (fulfillmentStatus === "partially_rescheduled" || fulfillmentStatus === "delivered") return "delivered";
+  if (fulfillmentStatus === "cancelled") return "cancelled";
+  return normalizeOrderStatus(order?.status);
+}
+
 export async function fetchOrdersForDeliveryDate(tenantId: string, dateStr: string): Promise<DeliveryOrder[]> {
   const ordersById = new Map<string, DeliveryOrder>();
   const dateFields = ["deliveryDate", "orderDate", "date"] as const;

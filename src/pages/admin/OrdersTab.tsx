@@ -1,6 +1,6 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { getLocalDateString, parseLocalDate } from "../../services/deliverySlots";
-import { normalizeOrderStatus, readOrderDeliveryDate, readOrderShift } from "../../services/deliveryOrders";
+import { getOperationalOrderStatus, normalizeOrderStatus, readOrderDeliveryDate, readOrderShift } from "../../services/deliveryOrders";
 import { getRouteLabel } from "../../services/addressRoutes";
 
 interface OrderItem {
@@ -8,6 +8,10 @@ interface OrderItem {
   unit: string;
   price: number;
   qty: number;
+  deliveredQty?: number;
+  rescheduledQty?: number | null;
+  fulfillmentStatus?: string;
+  followUpOrderId?: string | null;
 }
 
 interface OrdersTabProps {
@@ -15,13 +19,17 @@ interface OrdersTabProps {
   orders: any[];
   loadingOrders: boolean;
   ordersError: string;
+  initialStatusFilter?: OrderStatusFilter;
+  initialRouteFilter?: OrderRouteFilter;
   formatCustomerLabel: (id: string) => string;
   handleUpdateOrderStatus: (orderId: string, status: string, cancellationReason?: string) => void | Promise<void>;
 }
 
 type OrderTab = "all" | "one-time" | "subscription";
+type OrderRouteFilter = "all" | "missing";
 
 const STATUS_OPTIONS = ["All", "pending", "delivered", "cancelled"] as const;
+type OrderStatusFilter = (typeof STATUS_OPTIONS)[number];
 
 function ensureDate(dateValue: any): Date | null {
   if (!dateValue) return null;
@@ -56,6 +64,10 @@ function getStatusStyle(status: string): React.CSSProperties {
   return { background: "#f3f4f6", color: "#374151" };
 }
 
+function getDisplayStatus(order: any) {
+  return getOperationalOrderStatus(order);
+}
+
 function formatPlacedOn(value: any) {
   const date = ensureDate(value);
   if (!date) return "-";
@@ -78,6 +90,11 @@ function formatDeliveryDate(dateStr: string) {
 
 function itemSummary(items: OrderItem[]) {
   if (!items.length) return "-";
+  const deliveredQty = items.reduce((sum, item) => sum + Number(item.deliveredQty || 0), 0);
+  const rescheduledQty = items.reduce((sum, item) => sum + Number(item.rescheduledQty || 0), 0);
+  if (rescheduledQty > 0) {
+    return `${deliveredQty} delivered, ${rescheduledQty} carried forward`;
+  }
   if (items.length === 1) {
     const item = items[0];
     return `${item.name} (${item.unit || "unit"}) x ${item.qty || 1}`;
@@ -93,6 +110,11 @@ function readOrderRouteLabel(order: any) {
   });
 }
 
+function hasUsableRoute(order: any) {
+  const routeName = String(order.routeName || order.deliveryAddress?.routeName || "").trim().toLowerCase();
+  return Boolean(order.routeId || order.deliveryAddress?.routeId || (routeName && routeName !== "unassigned"));
+}
+
 function readCustomerDisplayName(order: any, fallbackLabel: string) {
   const rawName = String(order.customerName || "").trim();
   if (!rawName || rawName === order.customerId || rawName.length > 28) return fallbackLabel || "Unknown";
@@ -104,17 +126,28 @@ export default function OrdersTab({
   orders,
   loadingOrders,
   ordersError,
+  initialStatusFilter,
+  initialRouteFilter,
   formatCustomerLabel,
   handleUpdateOrderStatus,
 }: OrdersTabProps) {
   const [activeOrderTab, setActiveOrderTab] = useState<OrderTab>("all");
   const [searchTerm, setSearchTerm] = useState("");
-  const [statusFilter, setStatusFilter] = useState<(typeof STATUS_OPTIONS)[number]>("All");
+  const [statusFilter, setStatusFilter] = useState<OrderStatusFilter>("All");
+  const [routeFilter, setRouteFilter] = useState<OrderRouteFilter>("all");
   const [deliveryFrom, setDeliveryFrom] = useState("");
   const [deliveryTo, setDeliveryTo] = useState("");
   const [placedFrom, setPlacedFrom] = useState("");
   const [placedTo, setPlacedTo] = useState("");
   const [updatingId, setUpdatingId] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (initialStatusFilter) setStatusFilter(initialStatusFilter);
+  }, [initialStatusFilter]);
+
+  useEffect(() => {
+    if (initialRouteFilter) setRouteFilter(initialRouteFilter);
+  }, [initialRouteFilter]);
 
   const counts = useMemo(() => {
     return orders.reduce(
@@ -136,7 +169,7 @@ export default function OrdersTab({
         const deliveryDate = readOrderDeliveryDate(order);
         const placedDate = ensureDate(order.createdAt);
         const placedDateStr = placedDate ? getLocalDateString(placedDate) : "";
-        const status = normalizeOrderStatus(order.status);
+        const status = getDisplayStatus(order);
         const customerLabel = order.customerId ? formatCustomerLabel(order.customerId) : "";
         const productNames = (order.items || []).map((item: OrderItem) => item.name).join(" ");
         const routeLabel = readOrderRouteLabel(order);
@@ -151,6 +184,7 @@ export default function OrdersTab({
 
         if (search && !searchable.includes(search)) return false;
         if (statusFilter !== "All" && status !== statusFilter) return false;
+        if (routeFilter === "missing" && hasUsableRoute(order)) return false;
         if (deliveryFrom && deliveryDate < deliveryFrom) return false;
         if (deliveryTo && deliveryDate > deliveryTo) return false;
         if (placedFrom && placedDateStr < placedFrom) return false;
@@ -164,7 +198,7 @@ export default function OrdersTab({
         const placedB = ensureDate(b.createdAt)?.getTime() ?? 0;
         return placedB - placedA;
       });
-  }, [activeOrderTab, deliveryFrom, deliveryTo, formatCustomerLabel, orders, placedFrom, placedTo, searchTerm, statusFilter]);
+  }, [activeOrderTab, deliveryFrom, deliveryTo, formatCustomerLabel, orders, placedFrom, placedTo, routeFilter, searchTerm, statusFilter]);
 
   async function onStatusChange(orderId: string, newStatus: string) {
     let cancellationReason = "";
@@ -181,6 +215,7 @@ export default function OrdersTab({
   function clearFilters() {
     setSearchTerm("");
     setStatusFilter("All");
+    setRouteFilter("all");
     setDeliveryFrom("");
     setDeliveryTo("");
     setPlacedFrom("");
@@ -230,7 +265,7 @@ export default function OrdersTab({
         })}
       </div>
 
-      <div style={{ padding: "14px 22px", borderBottom: "1px solid #e5e7eb", display: "grid", gridTemplateColumns: "minmax(190px, 1.4fr) repeat(5, minmax(135px, 1fr))", gap: 10 }}>
+      <div style={{ padding: "14px 22px", borderBottom: "1px solid #e5e7eb", display: "grid", gridTemplateColumns: "minmax(190px, 1.4fr) repeat(6, minmax(125px, 1fr))", gap: 10 }}>
         <label style={filterLabelStyle}>
           Search
           <input value={searchTerm} onChange={(event) => setSearchTerm(event.target.value)} placeholder="ID / name / product / route" style={filterInputStyle} />
@@ -239,6 +274,13 @@ export default function OrdersTab({
           Status
           <select value={statusFilter} onChange={(event) => setStatusFilter(event.target.value as any)} style={filterInputStyle}>
             {STATUS_OPTIONS.map((status) => <option key={status} value={status}>{status === "All" ? "All Status" : getStatusLabel(status)}</option>)}
+          </select>
+        </label>
+        <label style={filterLabelStyle}>
+          Route
+          <select value={routeFilter} onChange={(event) => setRouteFilter(event.target.value as OrderRouteFilter)} style={filterInputStyle}>
+            <option value="all">All Routes</option>
+            <option value="missing">Missing Route</option>
           </select>
         </label>
         <label style={filterLabelStyle}>
@@ -296,20 +338,32 @@ export default function OrdersTab({
                 const customerLabel = order.customerId ? formatCustomerLabel(order.customerId) : "Unknown";
                 const customerName = readCustomerDisplayName(order, customerLabel);
                 const rowBg = index % 2 === 0 ? "#fff" : "#f8fafc";
+                const displayStatus = getDisplayStatus(order);
 
                 return (
                   <tr key={order.id} style={{ background: rowBg, borderBottom: "1px solid #e5e7eb" }}>
                     <td style={tdStyle}>
                       <span style={{ color: "#0369a1", fontWeight: 800 }}>#{order.id.slice(-6).toUpperCase()}</span>
+                      {order.fulfillmentType === "follow_up" && (
+                        <div style={{ marginTop: 6, display: "inline-block", padding: "3px 7px", borderRadius: 999, background: "#eef2ff", color: "#4338ca", fontSize: 11, fontWeight: 800 }}>
+                          Follow-up
+                        </div>
+                      )}
                     </td>
                     <td style={tdStyle}>
                       <div style={{ fontWeight: 700, color: "#111827" }}>{customerName}</div>
                       <div style={{ color: "#64748b", fontSize: 12, marginTop: 3 }}>{order.customerId || "-"}</div>
+                      {order.parentOrderId && (
+                        <div style={{ color: "#475569", fontSize: 12, marginTop: 5, fontWeight: 700 }}>From #{String(order.parentOrderId).slice(-6).toUpperCase()}</div>
+                      )}
                     </td>
                     <td style={tdStyle}>
-                      <span style={{ ...getStatusStyle(order.status), padding: "4px 10px", borderRadius: 999, fontWeight: 800, fontSize: 12 }}>
-                        {getStatusLabel(order.status)}
+                      <span style={{ ...getStatusStyle(displayStatus), padding: "4px 10px", borderRadius: 999, fontWeight: 800, fontSize: 12 }}>
+                        {getStatusLabel(displayStatus)}
                       </span>
+                      {order.fulfillmentStatus === "partially_rescheduled" && (
+                        <div style={{ color: "#4338ca", fontSize: 12, marginTop: 5, fontWeight: 800 }}>Partial - follow-up created</div>
+                      )}
                       {order.cancellationReason && (
                         <div style={{ color: "#b91c1c", fontSize: 12, marginTop: 5, fontWeight: 600 }}>{order.cancellationReason}</div>
                       )}
@@ -325,7 +379,7 @@ export default function OrdersTab({
                     <td style={tdStyle}>{formatPlacedOn(order.createdAt)}</td>
                     <td style={{ ...tdStyle, textAlign: "center" }}>
                       <select
-                        value={normalizeOrderStatus(order.status) === "cancelled" ? "not_delivered" : order.status || "pending"}
+                        value={displayStatus === "cancelled" ? "not_delivered" : displayStatus}
                         disabled={updatingId === order.id}
                         onChange={(event) => onStatusChange(order.id, event.target.value)}
                         style={{ padding: "7px 8px", borderRadius: 8, border: "1px solid #cbd5e1", background: "#fff", fontSize: 13, cursor: "pointer" }}

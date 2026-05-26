@@ -12,6 +12,7 @@ import {
   setDoc,
   increment,
 } from "firebase/firestore";
+import { getBillingTransactionDirection } from "./balances";
 
 export async function generateInvoiceForCustomerMonth(params: {
   tenantId: string;
@@ -54,11 +55,11 @@ export async function generateInvoiceForCustomerMonth(params: {
 
   snap.forEach((docSnap) => {
     const data = docSnap.data() as any;
-    const type = (data.type || "").toString().toLowerCase();
     const amount = typeof data.amount === "number" ? data.amount : 0;
-    if (type === "order_charge" || type === "debit") {
+    const direction = getBillingTransactionDirection(data.type);
+    if (direction === "debit") {
       totalDebits += amount;
-    } else {
+    } else if (direction === "credit") {
       totalCredits += amount;
     }
   });

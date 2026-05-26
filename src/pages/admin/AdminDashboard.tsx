@@ -18,6 +18,8 @@ import LogisticsTab from "./LogisticsTab";
 import SubscriptionPlansTab from "./SubscriptionPlansTab";
 import TeamTab from "./TeamTab";
 import DailyManifest from "./DailyManifest";
+import { fetchCustomerBalances, getOrderChargeTotal } from "../../services/balances";
+import { normalizeOrderStatus } from "../../services/deliveryOrders";
 
 // FIX 1: Added Timestamp to the Firebase imports
 import {
@@ -93,6 +95,7 @@ interface Order {
   source?: string; 
   type?: string;
   routeName?: string;
+  totalAmount?: number;
 }
 
 interface CustomerAccount {
@@ -109,6 +112,20 @@ interface TenantUser {
   phone?: string;
 }
 
+type AdminTabKey = "dashboard" | "customers" | "team" | "agents" | "delivery" | "products" | "plans" | "billing" | "orders" | "settings" | "logistics" | "manifest";
+type OrderStatusFilter = "All" | "pending" | "delivered" | "cancelled";
+type OrderRouteFilter = "all" | "missing";
+type BillingBalanceFilter = "all" | "due" | "credit";
+type CustomerBalanceFilter = "all" | "low";
+type CustomerAddressFilter = "all" | "issues";
+type AdminTabOptions = {
+  orderStatusFilter?: OrderStatusFilter;
+  orderRouteFilter?: OrderRouteFilter;
+  billingBalanceFilter?: BillingBalanceFilter;
+  customerBalanceFilter?: CustomerBalanceFilter;
+  customerAddressFilter?: CustomerAddressFilter;
+};
+
 export default function AdminDashboard() {
   const { user } = useAuth();
   const userId = user?.uid;
@@ -121,9 +138,12 @@ export default function AdminDashboard() {
     setToastType(type);
   };
 
-  const [activeTab, setActiveTab] = useState<
-  "dashboard" | "customers" | "team" | "agents" | "delivery" | "products" | "plans" | "billing" | "orders" | "settings" | "logistics" | "manifest"
->("dashboard");
+  const [activeTab, setActiveTab] = useState<AdminTabKey>("dashboard");
+  const [ordersInitialStatusFilter, setOrdersInitialStatusFilter] = useState<OrderStatusFilter | undefined>();
+  const [ordersInitialRouteFilter, setOrdersInitialRouteFilter] = useState<OrderRouteFilter | undefined>();
+  const [billingInitialBalanceFilter, setBillingInitialBalanceFilter] = useState<BillingBalanceFilter | undefined>();
+  const [customersInitialBalanceFilter, setCustomersInitialBalanceFilter] = useState<CustomerBalanceFilter | undefined>();
+  const [customersInitialAddressFilter, setCustomersInitialAddressFilter] = useState<CustomerAddressFilter | undefined>();
 
   const [tenant, setTenant] = useState<Tenant | null>(null);
   const [loadingTenant, setLoadingTenant] = useState(true);
@@ -176,6 +196,22 @@ export default function AdminDashboard() {
     background: "#ffffff",
     border: "1px solid #e5e7eb",
     boxShadow: "0 4px 12px rgba(0,0,0,0.04)",
+  };
+
+  const openAdminTab = (tab: string, options?: AdminTabOptions) => {
+    const nextTab = tab as AdminTabKey;
+    if (nextTab === "orders") {
+      setOrdersInitialStatusFilter(options?.orderStatusFilter || "All");
+      setOrdersInitialRouteFilter(options?.orderRouteFilter || "all");
+    }
+    if (nextTab === "billing") {
+      setBillingInitialBalanceFilter(options?.billingBalanceFilter || "all");
+    }
+    if (nextTab === "customers") {
+      setCustomersInitialBalanceFilter(options?.customerBalanceFilter || "all");
+      setCustomersInitialAddressFilter(options?.customerAddressFilter || "all");
+    }
+    setActiveTab(nextTab);
   };
 
   const handleWhatsAppReminder = (customerId: string, balance: number) => {
@@ -466,7 +502,7 @@ export default function AdminDashboard() {
   // 2. Orders Data
   useEffect(() => {
     if (tenant && activeTab === "orders") {
-      if (orders.length === 0) loadOrders(tenant.id);
+      loadOrders(tenant.id);
     }
   }, [tenant, activeTab]);
 
@@ -546,9 +582,19 @@ export default function AdminDashboard() {
 
   async function loadAccounts(tId: string) {
     setLoadingAccounts(true);
-    const snap = await getDocs(query(collection(db, "tenants", tId, "customerAccounts")));
-    setAccounts(snap.docs.map(d => ({ id: d.id, ...d.data() } as CustomerAccount)));
-    setLoadingAccounts(false);
+    try {
+      const balanceMap = await fetchCustomerBalances(tId);
+      const computedAccounts = Object.values(balanceMap)
+        .map((summary) => ({
+          id: `${tId}_${summary.customerId}`,
+          customerId: summary.customerId,
+          outstandingDue: summary.outstandingDue,
+        }))
+        .sort((a, b) => b.outstandingDue - a.outstandingDue);
+      setAccounts(computedAccounts);
+    } finally {
+      setLoadingAccounts(false);
+    }
   }
 
   async function loadUsersAndAssignments(tId: string) {
@@ -623,7 +669,7 @@ export default function AdminDashboard() {
     setSavingPayment(true);
     try {
       const amount = Number(paymentAmount);
-      await addDoc(collection(db, "tenants", tenant.id, "billingTransactions"), { customerId: paymentCustomerId, type: "payment", amount, createdAt: serverTimestamp() });
+      await addDoc(collection(db, "tenants", tenant.id, "billingTransactions"), { tenantId: tenant.id, customerId: paymentCustomerId, type: "payment", amount, note: paymentNote || "Payment received", createdAt: serverTimestamp() });
       await setDoc(doc(db, "tenants", tenant.id, "customerAccounts", `${tenant.id}_${paymentCustomerId}`), { outstandingDue: increment(-amount) }, { merge: true });
       await createNotification({ tenantId: tenant.id, userId: paymentCustomerId, type: "payment", title: "Payment received", message: `Rs.${amount} recorded.` });
       setPaymentAmount(""); setPaymentCustomerId(""); loadAccounts(tenant.id);
@@ -641,9 +687,30 @@ export default function AdminDashboard() {
     } catch (e:any) { console.error("INVOICE ERROR:", e); setInvError("Failed."); } finally { setInvSaving(false); }
   }
 
+  async function loadOrderBillingState(tId: string, orderId: string) {
+    const txSnap = await getDocs(query(collection(db, "tenants", tId, "billingTransactions"), where("orderId", "==", orderId)));
+    let charges = 0;
+    let reversals = 0;
+    txSnap.forEach((txDoc) => {
+      const data = txDoc.data() as any;
+      const type = String(data.type || "").toLowerCase();
+      const amount = Number(data.amount || 0);
+      if (type === "order_charge") charges += amount;
+      if (type === "order_reversal") reversals += amount;
+    });
+    return { charges, reversals, net: charges - reversals };
+  }
+
   async function handleUpdateOrderStatus(id: string, status: string, cancellationReason?: string) {
     if (!tenant) return;
     const normalizedStatus = status === "not_delivered" || status === "cancelled" ? "not_delivered" : status;
+    const targetStatus = normalizeOrderStatus(normalizedStatus);
+    let orderRecord: any = orders.find((order) => order.id === id);
+    if (!orderRecord) {
+      const orderSnap = await getDoc(doc(db, "tenants", tenant.id, "orders", id));
+      if (orderSnap.exists()) orderRecord = { id: orderSnap.id, ...orderSnap.data() };
+    }
+
     const updates: any = { status: normalizedStatus };
     if (normalizedStatus === "not_delivered") {
       updates.cancellationReason = cancellationReason || "Cancelled by admin";
@@ -652,8 +719,41 @@ export default function AdminDashboard() {
     } else {
       updates.cancellationReason = null;
     }
+
     await updateDoc(doc(db, "tenants", tenant.id, "orders", id), updates);
+    if (orderRecord?.customerId) {
+      const previousStatus = normalizeOrderStatus(orderRecord.status);
+      const billingState = await loadOrderBillingState(tenant.id, id);
+      const amount = getOrderChargeTotal(orderRecord);
+
+      if (targetStatus === "delivered" && amount > 0 && billingState.net <= 0) {
+        await addDoc(collection(db, "tenants", tenant.id, "billingTransactions"), {
+          tenantId: tenant.id,
+          customerId: orderRecord.customerId,
+          orderId: id,
+          type: "order_charge",
+          amount,
+          note: "Order delivered",
+          createdAt: serverTimestamp(),
+        });
+        await setDoc(doc(db, "tenants", tenant.id, "customerAccounts", `${tenant.id}_${orderRecord.customerId}`), { outstandingDue: increment(amount), updatedAt: serverTimestamp() }, { merge: true });
+      }
+
+      if (previousStatus === "delivered" && targetStatus !== "delivered" && billingState.net > 0) {
+        await addDoc(collection(db, "tenants", tenant.id, "billingTransactions"), {
+          tenantId: tenant.id,
+          customerId: orderRecord.customerId,
+          orderId: id,
+          type: "order_reversal",
+          amount: billingState.net,
+          note: cancellationReason || "Order status changed by admin",
+          createdAt: serverTimestamp(),
+        });
+        await setDoc(doc(db, "tenants", tenant.id, "customerAccounts", `${tenant.id}_${orderRecord.customerId}`), { outstandingDue: increment(-billingState.net), updatedAt: serverTimestamp() }, { merge: true });
+      }
+    }
     loadOrders(tenant.id);
+    loadAccounts(tenant.id);
   }
 
   function formatCustomerLabel(id: string) {
@@ -673,20 +773,20 @@ export default function AdminDashboard() {
         
         <div style={{ display: "flex", gap: 8, margin: "20px 0", flexWrap: "wrap", justifyContent: "center" }}>
           {allowedTabs.map(k => (
-  <button key={k} onClick={() => setActiveTab(k as any)} style={{ padding: "8px 14px", borderRadius: 20, background: activeTab === k ? "#111827" : "#fff", color: activeTab === k ? "#fff" : "#333", cursor: "pointer", border: "1px solid #ddd", fontSize: 13 }}>
+  <button key={k} onClick={() => openAdminTab(k)} style={{ padding: "8px 14px", borderRadius: 20, background: activeTab === k ? "#111827" : "#fff", color: activeTab === k ? "#fff" : "#333", cursor: "pointer", border: "1px solid #ddd", fontSize: 13 }}>
     {k.toUpperCase()}
   </button>
 ))}
         </div>
 
-        {activeTab === "dashboard" && <DashboardTab onOpenTab={(tab) => setActiveTab(tab as any)} />}
+        {activeTab === "dashboard" && <DashboardTab onOpenTab={openAdminTab} />}
         {activeTab === "manifest" && <DailyManifest />}
-        {activeTab === "customers" && <CustomersTab />}
+        {activeTab === "customers" && <CustomersTab initialBalanceFilter={customersInitialBalanceFilter} initialAddressFilter={customersInitialAddressFilter} />}
         {activeTab === "team" && <TeamTab />}
         {activeTab === "delivery" && <DeliveryTab />}
         {activeTab === "products" && <ProductsTab {...{cardStyle, products, categories, banners, loadingProducts, productsError, newName, newUnit, newPrice, newCategory, savingProduct, setNewName, setNewUnit, setNewPrice, setNewCategory, setNewImage, handleCreateProduct, handleUpdateProduct, handleToggleProductActive, handleCreateCategory, handleUpdateCategory: async () => {}, handleReorderCategories, handleUploadBanner, handleDeleteBanner, uploadingBanner, newIsSubscribable, setNewIsSubscribable}} />}
-        {activeTab === "billing" && <BillingTab {...{cardStyle, accounts, loadingAccounts, accountsError, paymentCustomerId, paymentAmount, paymentNote, savingPayment, invCustomerId, invYear, invMonth, invDeliveryCharge, invSaving, invError, setPaymentCustomerId, setPaymentAmount, setPaymentNote, setInvCustomerId, setInvYear, setInvMonth, setInvDeliveryCharge, handleRecordPayment, handleGenerateInvoice, formatCustomerLabel, handleWhatsAppReminder}} customers={tenantCustomers} invoices={invoices} loadingInvoices={loadingInvoices} handlePrintInvoice={handlePrintInvoice} handleWhatsAppInvoice={handleWhatsAppInvoice} handlePayInvoice={handlePayInvoice}/>}
-        {activeTab === "orders" && <OrdersTab {...{cardStyle, orders, loadingOrders, ordersError, formatCustomerLabel, handleUpdateOrderStatus}} />}
+        {activeTab === "billing" && <BillingTab {...{cardStyle, accounts, loadingAccounts, accountsError, paymentCustomerId, paymentAmount, paymentNote, savingPayment, invCustomerId, invYear, invMonth, invDeliveryCharge, invSaving, invError, setPaymentCustomerId, setPaymentAmount, setPaymentNote, setInvCustomerId, setInvYear, setInvMonth, setInvDeliveryCharge, handleRecordPayment, handleGenerateInvoice, formatCustomerLabel, handleWhatsAppReminder}} customers={tenantCustomers} invoices={invoices} loadingInvoices={loadingInvoices} handlePrintInvoice={handlePrintInvoice} handleWhatsAppInvoice={handleWhatsAppInvoice} handlePayInvoice={handlePayInvoice} initialBalanceFilter={billingInitialBalanceFilter}/>}
+        {activeTab === "orders" && <OrdersTab {...{cardStyle, orders, loadingOrders, ordersError, formatCustomerLabel, handleUpdateOrderStatus}} initialStatusFilter={ordersInitialStatusFilter} initialRouteFilter={ordersInitialRouteFilter} />}
         {activeTab === "settings" && <SettingsTab />}
         {activeTab === "logistics" && <LogisticsTab />}
         {activeTab === "plans" && <SubscriptionPlansTab />}

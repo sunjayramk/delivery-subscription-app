@@ -35,6 +35,7 @@ import { useTenantResolver } from "../../hooks/useTenantResolver";
 import CustomerAuth from "./CustomerAuth";
 import CustomerOnboarding from "./CustomerOnboarding";
 import { useAuth } from "../../context/AuthContext"; 
+import { fetchCustomerBalance, getBillingTransactionDirection, getWalletTransactionDirection } from "../../services/balances";
 
 // --- INTERFACES ---
 interface Product {
@@ -51,6 +52,13 @@ interface Order {
   id: string;
   createdAt?: Date;
   status: string;
+  fulfillmentType?: string;
+  parentOrderId?: string;
+  parentDeliveryInstanceId?: string;
+  rescheduledFromDate?: string;
+  rescheduledFromShift?: string;
+  rescheduleReason?: string;
+  paymentStatus?: string;
   items: {
     name: string;
     unit: string;
@@ -289,28 +297,27 @@ export default function CustomerHome() {
       setWalletLoading(true); setWalletError("");
       try {
         const allTx: WalletTransaction[] = [];
-        const filters = [where("tenantId", "==", user.tenantId), where("customerId", "==", user.uid)] as const;
+        const customerFilter = where("customerId", "==", user.uid);
 
         try {
-          const txQ1 = query(collection(db, "tenants", user.tenantId, "walletTransactions"), ...filters);
+          const txQ1 = query(collection(db, "tenants", user.tenantId, "walletTransactions"), customerFilter);
           const txSnap1 = await getDocs(txQ1);
           txSnap1.forEach((docSnap) => {
             const data = docSnap.data() as any;
             allTx.push({
-              id: docSnap.id, type: (data.type || "").toLowerCase() === "debit" ? "debit" : "credit", amount: data.amount ?? 0,
+              id: docSnap.id, type: getWalletTransactionDirection(data.type) === "debit" ? "debit" : "credit", amount: data.amount ?? 0,
               note: data.note || "", orderId: data.orderId || undefined, createdAt: data.createdAt?.toDate ? data.createdAt.toDate() : undefined,
             });
           });
         } catch (err) {}
 
         try {
-          const txQ2 = query(collection(db, "tenants", user.tenantId, "billingTransactions"), ...filters);
+          const txQ2 = query(collection(db, "tenants", user.tenantId, "billingTransactions"), customerFilter);
           const txSnap2 = await getDocs(txQ2);
           txSnap2.forEach((docSnap) => {
             const data = docSnap.data() as any;
-            const rawType = (data.type || "").toLowerCase();
             allTx.push({
-              id: docSnap.id, type: (rawType === "order_charge" || rawType === "debit") ? "debit" : "credit", amount: data.amount ?? 0,
+              id: docSnap.id, type: getBillingTransactionDirection(data.type) === "debit" ? "debit" : "credit", amount: data.amount ?? 0,
               note: data.note || "", orderId: data.orderId || undefined, createdAt: data.createdAt?.toDate ? data.createdAt.toDate() : undefined,
             });
           });
@@ -321,6 +328,15 @@ export default function CustomerHome() {
           const amt = typeof tx.amount === "number" ? tx.amount : 0;
           if (tx.type === "debit") { totalBilled += amt; balance += amt; } else { totalPaid += amt; balance -= amt; }
         });
+
+        try {
+          const summary = await fetchCustomerBalance(user.tenantId, user.uid);
+          balance = summary.outstandingDue;
+          totalBilled = summary.totalBilled;
+          totalPaid = summary.totalPaid;
+        } catch (err) {
+          console.warn("Using visible transactions for wallet balance fallback", err);
+        }
 
         allTx.sort((a, b) => (b.createdAt?.getTime() ?? 0) - (a.createdAt?.getTime() ?? 0));
         setWalletBalance(balance); setWalletTotalBilled(totalBilled); setWalletTotalPaid(totalPaid); setWalletTx(allTx.slice(0, 10));

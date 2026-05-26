@@ -24,6 +24,13 @@ interface Order {
   items: OrderItem[];
   deliveryAddress?: DeliveryAddress;
   shift?: string; // ADDED: The new Morning/Evening shift!
+  fulfillmentType?: string;
+  parentOrderId?: string;
+  parentDeliveryInstanceId?: string;
+  rescheduledFromDate?: string;
+  rescheduledFromShift?: string;
+  rescheduleReason?: string;
+  paymentStatus?: string;
 }
 
 interface Props {
@@ -57,6 +64,15 @@ function getStatusLabel(status: string): string {
 
 function getOrderTotal(items: OrderItem[]): number {
   return items.reduce((sum, it) => sum + it.price * it.qty, 0);
+}
+
+function formatRescheduledFrom(order: Order) {
+  if (!order.rescheduledFromDate) return "";
+  const date = new Date(order.rescheduledFromDate);
+  const label = Number.isNaN(date.getTime())
+    ? order.rescheduledFromDate
+    : date.toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" });
+  return `${label}${order.rescheduledFromShift ? ` (${order.rescheduledFromShift})` : ""}`;
 }
 
 export default function OrdersTab({
@@ -125,6 +141,8 @@ export default function OrdersTab({
         <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
           {sortedOrders.map((o) => {
             const total = getOrderTotal(o.items);
+            const isFollowUp = o.fulfillmentType === "follow_up";
+            const rescheduledFrom = formatRescheduledFrom(o);
             return (
               <div key={o.id} style={{ padding: 16, border: "1px solid #e5e7eb", borderRadius: 16, background: "#fff", boxShadow: "0 2px 4px rgba(0,0,0,0.02)" }}>
                 
@@ -134,6 +152,11 @@ export default function OrdersTab({
                     <div style={{ fontWeight: 700, fontSize: 14, color: "#111827", marginBottom: 4 }}>
                       Order #{o.id.slice(-6).toUpperCase()}
                     </div>
+                    {isFollowUp && (
+                      <div style={{ display: "inline-flex", alignItems: "center", padding: "3px 8px", borderRadius: 999, background: "#eef2ff", color: "#4338ca", fontSize: 11, fontWeight: 800, marginBottom: 6 }}>
+                        Follow-up order
+                      </div>
+                    )}
                     {o.createdAt && (
                       <div style={{ fontSize: 12, color: "#6b7280" }}>
                         {o.createdAt.toLocaleDateString("en-IN", { day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' })}
@@ -144,6 +167,22 @@ export default function OrdersTab({
                     {getStatusLabel(o.status)}
                   </span>
                 </div>
+
+                {isFollowUp && (
+                  <div style={{ border: "1px solid #c7d2fe", background: "#eef2ff", color: "#312e81", borderRadius: 12, padding: 12, marginBottom: 12, fontSize: 12, lineHeight: 1.45 }}>
+                    <div style={{ fontWeight: 800, marginBottom: 3 }}>Carried forward from a previous delivery</div>
+                    <div>
+                      These items were not completed earlier and have been scheduled again
+                      {rescheduledFrom ? ` from ${rescheduledFrom}` : ""}.
+                    </div>
+                    {o.parentOrderId && (
+                      <div style={{ marginTop: 5, fontWeight: 700 }}>Original order #{o.parentOrderId.slice(-6).toUpperCase()}</div>
+                    )}
+                    {o.rescheduleReason && (
+                      <div style={{ marginTop: 5 }}>Reason: {o.rescheduleReason}</div>
+                    )}
+                  </div>
+                )}
 
                 {/* NEW: Shift Delivery Badge */}
                 {o.shift && (
@@ -174,7 +213,7 @@ export default function OrdersTab({
                     {formatAddress(o.deliveryAddress) || "Default Address"}
                   </div>
                   <div style={{ textAlign: "right" }}>
-                    <div style={{ fontSize: 11, color: "#6b7280", marginBottom: 2 }}>Total Paid</div>
+                    <div style={{ fontSize: 11, color: "#6b7280", marginBottom: 2 }}>{isFollowUp ? "Carried Amount" : "Total Paid"}</div>
                     <div style={{ fontWeight: 800, fontSize: 18, color: "#111827" }}>Rs.{total.toFixed(2)}</div>
                   </div>
                 </div>

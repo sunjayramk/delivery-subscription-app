@@ -2,10 +2,11 @@ import { useEffect, useState, useMemo } from "react";
 import { useAuth } from "../../context/AuthContext";
 import { db } from "../../firebase";
 import {
-  collection, query, where, getDocs, doc, setDoc,
-  addDoc, serverTimestamp, updateDoc
+  collection, query, where, getDocs, getDoc, doc, setDoc,
+  addDoc, serverTimestamp, updateDoc, increment
 } from "firebase/firestore";
 import { buildAddressServiceFields, getAddressRouteStatus, getRouteLabel, type ServiceHub, type ServiceZone } from "../../services/addressRoutes";
+import { fetchCustomerBalances, getBillingTransactionDirection, getWalletTransactionDirection } from "../../services/balances";
 
 interface Customer {
   id: string;
@@ -17,8 +18,19 @@ interface Customer {
   routeId?: string;
   routeName: string;
   status: "Active" | "Inactive";
+  hasFinancialActivity?: boolean;
+  hasAddressIssue?: boolean;
+  addressIssueCount?: number;
   hasCustomDeliveryFee?: boolean;
   customDeliveryFeeAmount?: number;
+}
+
+type CustomerBalanceFilter = "all" | "low";
+type CustomerAddressFilter = "all" | "issues";
+
+interface CustomersProps {
+  initialBalanceFilter?: CustomerBalanceFilter;
+  initialAddressFilter?: CustomerAddressFilter;
 }
 
 interface RouteOption {
@@ -40,7 +52,7 @@ function readDate(value: any) {
   return new Date();
 }
 
-export default function Customers() {
+export default function Customers({ initialBalanceFilter, initialAddressFilter }: CustomersProps) {
   const { user } = useAuth();
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [availableRoutes, setAvailableRoutes] = useState<RouteOption[]>([]);
@@ -53,6 +65,9 @@ export default function Customers() {
   const [searchPhone, setSearchPhone] = useState("");
   const [searchRoute, setSearchRoute] = useState("");
   const [searchStatus, setSearchStatus] = useState("All");
+  const [balanceFilter, setBalanceFilter] = useState<CustomerBalanceFilter>("all");
+  const [addressFilter, setAddressFilter] = useState<CustomerAddressFilter>("all");
+  const [warningLimit, setWarningLimit] = useState(500);
 
   // Panel State
   const [selectedCustomer, setSelectedCustomer] = useState<Customer | null>(null);
@@ -82,17 +97,34 @@ export default function Customers() {
   const [addRoute, setAddRoute] = useState("");
   const [isAdding, setIsAdding] = useState(false);
 
+  useEffect(() => {
+    if (!initialBalanceFilter) return;
+    setBalanceFilter(initialBalanceFilter);
+    if (initialBalanceFilter !== "all") setAddressFilter("all");
+  }, [initialBalanceFilter]);
+
+  useEffect(() => {
+    if (!initialAddressFilter) return;
+    setAddressFilter(initialAddressFilter);
+    if (initialAddressFilter !== "all") setBalanceFilter("all");
+  }, [initialAddressFilter]);
+
   // 1. LOAD ALL CUSTOMERS (Simplified)
 useEffect(() => {
   async function loadData() {
     if (!user?.tenantId) return;
     setLoading(true);
     try {
-      const [hubSnap, zoneSnap, routeSnap] = await Promise.all([
+      const [hubSnap, zoneSnap, routeSnap, settingsSnap, addressesSnap, balanceMap] = await Promise.all([
         getDocs(collection(db, "tenants", user.tenantId, "hubs")),
         getDocs(collection(db, "tenants", user.tenantId, "zones")),
         getDocs(collection(db, "tenants", user.tenantId, "routes")),
+        getDoc(doc(db, "tenants", user.tenantId, "settings", "global")),
+        getDocs(collection(db, "tenants", user.tenantId, "addresses")),
+        fetchCustomerBalances(user.tenantId),
       ]);
+      const nextWarningLimit = Number(settingsSnap.exists() ? settingsSnap.data().warningLimit || 500 : 500);
+      setWarningLimit(nextWarningLimit);
 
       const hubsById = new Map(hubSnap.docs.map((d) => [d.id, { id: d.id, ...(d.data() as any) }]));
       const zonesById = new Map(zoneSnap.docs.map((d) => [d.id, { id: d.id, ...(d.data() as any) }]));
@@ -115,6 +147,16 @@ useEffect(() => {
       setServiceZones(zoneList);
       setAvailableRoutes(routeOptions);
 
+      const addressIssueCounts = new Map<string, number>();
+      addressesSnap.docs.forEach((addressDoc) => {
+        const address = addressDoc.data() as any;
+        const serviceFields = buildAddressServiceFields(address, zoneList, hubList);
+        const customerId = String(address.customerId || "");
+        if (customerId && serviceFields.routeStatus === "unserviceable") {
+          addressIssueCounts.set(customerId, (addressIssueCounts.get(customerId) || 0) + 1);
+        }
+      });
+
       // Fetch tenant users with the same simple query used by the main admin dashboard.
       // Filtering the role locally avoids needing a compound Firestore index for this tab.
       const usersQ = query(collection(db, "users"), where("tenantId", "==", user.tenantId));
@@ -128,7 +170,10 @@ useEffect(() => {
           email: data.email || "",
           phone: data.phone || "-",
           createdAt: readDate(data.createdAt),
-          walletBalance: 0, // We will calculate this when they click 'View'
+          walletBalance: balanceMap[docSnap.id]?.outstandingDue || 0,
+          hasFinancialActivity: balanceMap[docSnap.id]?.hasFinancialActivity || false,
+          hasAddressIssue: (addressIssueCounts.get(docSnap.id) || 0) > 0,
+          addressIssueCount: addressIssueCounts.get(docSnap.id) || 0,
           routeName: data.routeName || "Unassigned",
           status: "Active"
         };
@@ -166,12 +211,11 @@ useEffect(() => {
         // Transactions (Ledger)
         const txs: any[] = [];
         const wSnap = await getDocs(query(collection(db, "tenants", user.tenantId, "walletTransactions"), customerFilter));
-        wSnap.forEach(d => txs.push({ id: d.id, ...d.data(), type: (d.data().type||"").toLowerCase() === "debit" ? "debit" : "credit" }));
+        wSnap.forEach(d => txs.push({ id: d.id, ...d.data(), type: getWalletTransactionDirection(d.data().type) === "debit" ? "debit" : "credit" }));
         
         const bSnap = await getDocs(query(collection(db, "tenants", user.tenantId, "billingTransactions"), customerFilter));
         bSnap.forEach(d => {
-           const rawType = (d.data().type||"").toLowerCase();
-           txs.push({ id: d.id, ...d.data(), type: (rawType === "order_charge" || rawType === "debit") ? "debit" : "credit" });
+           txs.push({ id: d.id, ...d.data(), type: getBillingTransactionDirection(d.data().type) === "debit" ? "debit" : "credit" });
         });
 
         txs.sort((a, b) => (b.createdAt?.toMillis?.() || 0) - (a.createdAt?.toMillis?.() || 0));
@@ -195,9 +239,12 @@ useEffect(() => {
       const matchPhone = (c.phone || "").toLowerCase().includes(searchPhone.toLowerCase());
       const matchRoute = c.routeName.toLowerCase().includes(searchRoute.toLowerCase());
       const matchStatus = searchStatus === "All" || c.status === searchStatus;
-      return matchName && matchPhone && matchRoute && matchStatus;
+      const creditAvailable = Math.max(0, -c.walletBalance);
+      const matchBalance = balanceFilter === "all" || (c.hasFinancialActivity && creditAvailable < warningLimit);
+      const matchAddress = addressFilter === "all" || c.hasAddressIssue;
+      return matchName && matchPhone && matchRoute && matchStatus && matchBalance && matchAddress;
     });
-  }, [customers, searchName, searchPhone, searchRoute, searchStatus]);
+  }, [addressFilter, balanceFilter, customers, searchName, searchPhone, searchRoute, searchStatus, warningLimit]);
 
   async function handleUpdateRouteAndFees() {
     if (!user?.tenantId || !selectedCustomer) return;
@@ -312,6 +359,7 @@ useEffect(() => {
 
       // Optimistically update UI
       const amountChange = walletAdjType === "credit" ? -amt : amt;
+      await setDoc(doc(db, "tenants", user.tenantId, "customerAccounts", `${user.tenantId}_${selectedCustomer.id}`), { outstandingDue: increment(amountChange), updatedAt: serverTimestamp() }, { merge: true });
       const newBalance = selectedCustomer.walletBalance + amountChange;
       
       setCustomers(prev => prev.map(c => c.id === selectedCustomer.id ? { ...c, walletBalance: newBalance } : c));
@@ -346,7 +394,7 @@ useEffect(() => {
         createdAt: serverTimestamp()
       });
 
-      const newCustomer: Customer = { id: newUserId, name: addName, email: addEmail, phone: addPhone, createdAt: new Date(), walletBalance: 0, routeId: selectedRouteObj?.id || undefined, routeName: addRoute || "Unassigned", status: "Active", hasCustomDeliveryFee: false, customDeliveryFeeAmount: 0 };
+      const newCustomer: Customer = { id: newUserId, name: addName, email: addEmail, phone: addPhone, createdAt: new Date(), walletBalance: 0, routeId: selectedRouteObj?.id || undefined, routeName: addRoute || "Unassigned", status: "Active", hasFinancialActivity: false, hasAddressIssue: false, addressIssueCount: 0, hasCustomDeliveryFee: false, customDeliveryFeeAmount: 0 };
       setCustomers([newCustomer, ...customers]);
       setAddName(""); setAddEmail(""); setAddPhone(""); setAddRoute(""); setShowAddModal(false);
       alert("Customer added successfully!");
@@ -369,7 +417,23 @@ useEffect(() => {
       {/* HEADER & TABLE (Unchanged) */}
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 24 }}>
         <div><h1 style={{ margin: "0 0 8px 0", fontSize: 24, color: "#111827" }}>Team Customers</h1><p style={{ margin: 0, color: "#6b7280", fontSize: 14 }}>Manage your user base, routes, and financials.</p></div>
-        <div style={{ display: "flex", gap: 12 }}><button style={{ padding: "8px 16px", background: "#16a34a", color: "#fff", border: "none", borderRadius: 8, fontWeight: 600, cursor: "pointer" }}>down Export CSV</button><button onClick={() => setShowAddModal(true)} style={{ padding: "8px 16px", background: "#2563eb", color: "#fff", border: "none", borderRadius: 8, fontWeight: 600, cursor: "pointer" }}>+ Add User</button></div>
+        <div style={{ display: "flex", gap: 12, flexWrap: "wrap", justifyContent: "flex-end" }}>
+          <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+            {[
+              { key: "all", label: "All Customers" },
+              { key: "low", label: "Low Balance" },
+              { key: "address_issues", label: "Address Issues" },
+            ].map((filter) => {
+              const active = filter.key === "address_issues" ? addressFilter === "issues" : balanceFilter === filter.key && addressFilter === "all";
+              return (
+                <button key={filter.key} onClick={() => { setBalanceFilter(filter.key === "low" ? "low" : "all"); setAddressFilter(filter.key === "address_issues" ? "issues" : "all"); }} style={{ padding: "8px 12px", borderRadius: 999, border: active ? "1px solid #111827" : "1px solid #d1d5db", background: active ? "#111827" : "#fff", color: active ? "#fff" : "#374151", fontWeight: 700, cursor: "pointer", fontSize: 12 }}>
+                  {filter.label}
+                </button>
+              );
+            })}
+          </div>
+          <button style={{ padding: "8px 16px", background: "#16a34a", color: "#fff", border: "none", borderRadius: 8, fontWeight: 600, cursor: "pointer" }}>down Export CSV</button><button onClick={() => setShowAddModal(true)} style={{ padding: "8px 16px", background: "#2563eb", color: "#fff", border: "none", borderRadius: 8, fontWeight: 600, cursor: "pointer" }}>+ Add User</button>
+        </div>
       </div>
 
       <div style={{ background: "#fff", borderRadius: 12, border: "1px solid #e5e7eb", overflowX: "auto", boxShadow: "0 4px 6px -1px rgba(0, 0, 0, 0.05)" }}>
@@ -384,7 +448,7 @@ useEffect(() => {
               <td style={{ padding: 8 }}></td>
               <td style={{ padding: 8 }}><input type="text" placeholder="Route..." value={searchRoute} onChange={e => setSearchRoute(e.target.value)} style={{ width: "100%", padding: "6px", borderRadius: 4, border: "1px solid #d1d5db", fontSize: 12 }} /></td>
               <td style={{ padding: 8 }}><select value={searchStatus} onChange={e => setSearchStatus(e.target.value)} style={{ width: "100%", padding: "6px", borderRadius: 4, border: "1px solid #d1d5db", fontSize: 12 }}><option value="All">All</option><option value="Active">Active</option><option value="Inactive">Inactive</option></select></td>
-              <td style={{ padding: 8, textAlign: "center" }}><button onClick={() => { setSearchName(""); setSearchPhone(""); setSearchRoute(""); setSearchStatus("All"); }} style={{ background: "#fee2e2", color: "#ef4444", border: "none", padding: "6px 12px", borderRadius: 4, cursor: "pointer", fontSize: 12, fontWeight: 600 }}>Clear</button></td>
+              <td style={{ padding: 8, textAlign: "center" }}><button onClick={() => { setSearchName(""); setSearchPhone(""); setSearchRoute(""); setSearchStatus("All"); setBalanceFilter("all"); setAddressFilter("all"); }} style={{ background: "#fee2e2", color: "#ef4444", border: "none", padding: "6px 12px", borderRadius: 4, cursor: "pointer", fontSize: 12, fontWeight: 600 }}>Clear</button></td>
             </tr>
           </thead>
           <tbody>
@@ -393,7 +457,7 @@ useEffect(() => {
                 <td style={{ padding: "12px 16px", color: "#111827", fontWeight: 500 }}>{c.name}<div style={{ fontSize: 11, color: "#6b7280", marginTop: 2 }}>{c.email}</div></td>
                 <td style={{ padding: "12px 16px", color: "#4b5563" }}>{c.phone}</td>
                 <td style={{ padding: "12px 16px", fontWeight: 700, color: c.walletBalance > 0 ? "#dc2626" : c.walletBalance < 0 ? "#16a34a" : "#4b5563" }}>{c.walletBalance > 0 ? "-" : c.walletBalance < 0 ? "+" : ""}Rs.{Math.abs(c.walletBalance).toFixed(2)}</td>
-                <td style={{ padding: "12px 16px", color: "#4b5563" }}><div style={{ display: "flex", gap: 8 }}><span style={{ background: c.routeName === "Unassigned" ? "#fef2f2" : "#eff6ff", color: c.routeName === "Unassigned" ? "#dc2626" : "#2563eb", padding: "2px 8px", borderRadius: 12, fontSize: 11, fontWeight: 600 }}>{c.routeName}</span>{c.hasCustomDeliveryFee && <span style={{ background: "#fef08a", color: "#854d0e", padding: "2px 8px", borderRadius: 12, fontSize: 11, fontWeight: 700 }}>*</span>}</div></td>
+                <td style={{ padding: "12px 16px", color: "#4b5563" }}><div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}><span style={{ background: c.routeName === "Unassigned" ? "#fef2f2" : "#eff6ff", color: c.routeName === "Unassigned" ? "#dc2626" : "#2563eb", padding: "2px 8px", borderRadius: 12, fontSize: 11, fontWeight: 600 }}>{c.routeName}</span>{c.hasAddressIssue && <span style={{ background: "#fee2e2", color: "#b91c1c", padding: "2px 8px", borderRadius: 12, fontSize: 11, fontWeight: 800 }}>{c.addressIssueCount || 1} address issue</span>}{c.hasCustomDeliveryFee && <span style={{ background: "#fef08a", color: "#854d0e", padding: "2px 8px", borderRadius: 12, fontSize: 11, fontWeight: 700 }}>*</span>}</div></td>
                 <td style={{ padding: "12px 16px" }}><span style={{ background: c.status === "Active" ? "#dcfce7" : "#f3f4f6", color: c.status === "Active" ? "#16a34a" : "#4b5563", padding: "2px 8px", borderRadius: 12, fontSize: 11, fontWeight: 600 }}>{c.status}</span></td>
                 <td style={{ padding: "12px 16px", textAlign: "center" }}><button onClick={() => setSelectedCustomer(c)} style={{ background: "#eff6ff", color: "#2563eb", border: "1px solid #bfdbfe", padding: "6px 16px", borderRadius: 6, cursor: "pointer", fontSize: 12, fontWeight: 700 }}>View</button></td>
               </tr>
